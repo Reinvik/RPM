@@ -57,7 +57,7 @@ export default function MechanicSettlement({ mechanics }) {
   const handleSave = async (mechId) => {
     setIsSaving(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .schema('garage')
         .from('garage_mechanics')
         .update({
@@ -74,12 +74,17 @@ export default function MechanicSettlement({ mechanics }) {
           cargo: editValues.cargo || null,
           bonos: Number(editValues.bonos)
         })
-        .eq('id', mechId);
+        .eq('id', mechId)
+        .select();
 
       if (error) throw error;
       
-      setEditingId(null);
-      window.location.reload(); 
+      if (!data || data.length === 0) {
+        alert("⚠️ No se guardaron los cambios. Es posible que no tengas permisos (RLS) para editar este mecánico o que el registro no exista.");
+      } else {
+        setEditingId(null);
+        window.location.reload(); 
+      }
     } catch (err) {
       console.error("Error updating mechanic:", err);
       alert("Error al guardar. " + err.message);
