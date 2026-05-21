@@ -9,7 +9,7 @@ import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
 
 export default function NexusRPMDashboard() {
-  const { data, loading, addExpense } = useNexusRPM();
+  const { data, loading, addExpense, refetchData } = useNexusRPM();
   const { logout, companyName } = useNexusContext();
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
 
@@ -58,7 +58,7 @@ export default function NexusRPMDashboard() {
             <Users className="text-blue-600" size={24} />
             Liquidación y Productividad (MO)
           </h2>
-          <MechanicSettlement mechanics={mechanics} />
+          <MechanicSettlement mechanics={mechanics} onUpdate={refetchData} />
         </div>
 
       </div>

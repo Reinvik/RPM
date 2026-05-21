@@ -6,7 +6,7 @@ import { useNexusContext } from '../../context/NexusContext';
 import { supabase } from '../../lib/supabase';
 
 export default function PayrollModule() {
-  const { data: { mechanics }, loading } = useNexusRPM();
+  const { data: { mechanics }, loading, refetchData } = useNexusRPM();
   const { companyId } = useNexusContext();
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -40,7 +40,7 @@ export default function PayrollModule() {
     if (!error) {
       setShowForm(false);
       setFormData({ name: '', sueldo_base: '', porcentaje_comision_mo: '', porcentaje_comision_insumos: '' });
-      window.location.reload(); // Recargar para ver el nuevo mecánico
+      refetchData(); // Refrescar localmente
     } else {
       alert("Error al agregar personal: " + error.message);
     }
@@ -138,7 +138,7 @@ export default function PayrollModule() {
           Gestión de liquidaciones, sueldos base y comisiones generadas por servicios de taller. 
           Al aprobar una liquidación, se descontará del margen operativo mensual.
         </p>
-        <MechanicSettlement mechanics={mechanics} />
+        <MechanicSettlement mechanics={mechanics} onUpdate={refetchData} />
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import { useNexusContext } from '../../context/NexusContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-export default function MechanicSettlement({ mechanics }) {
+export default function MechanicSettlement({ mechanics, onUpdate }) {
   const { companyId } = useNexusContext();
   const [editingId, setEditingId] = useState(null);
   const [editValues, setEditValues] = useState({ 
@@ -83,7 +83,8 @@ export default function MechanicSettlement({ mechanics }) {
         alert("⚠️ No se guardaron los cambios. Es posible que no tengas permisos (RLS) para editar este mecánico o que el registro no exista.");
       } else {
         setEditingId(null);
-        window.location.reload(); 
+        if (onUpdate) onUpdate();
+        else window.location.reload(); 
       }
     } catch (err) {
       console.error("Error updating mechanic:", err);
@@ -220,6 +221,27 @@ export default function MechanicSettlement({ mechanics }) {
       doc.line(120, sigY, 180, sigY);
       doc.text('Firma Colaborador', 135, sigY + 5);
       
+      // Registrar el gasto en Supabase
+      const { error: expenseError } = await supabase
+        .schema('garage')
+        .from('financial_expenses')
+        .insert({
+          company_id: companyId,
+          tipo: 'Fijo',
+          categoria: 'Pago Sueldos',
+          monto: Math.round(liquidoAPagar),
+          fecha: new Date().toISOString().split('T')[0],
+          aplica_credito_iva: false
+        });
+
+      if (expenseError) {
+        console.error("Error al registrar egreso de sueldo:", expenseError);
+        alert("Advertencia: Se generó el PDF pero no se pudo registrar el gasto automático: " + expenseError.message);
+      } else {
+        alert(`✅ Liquidación aprobada y egreso de sueldo registrado por $${Math.round(liquidoAPagar).toLocaleString('es-CL')}`);
+        if (onUpdate) onUpdate();
+      }
+
       doc.save(`Liquidacion_${mech.name}_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) {
       console.error("Error generating PDF:", err);

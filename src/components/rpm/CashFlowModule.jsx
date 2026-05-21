@@ -72,6 +72,44 @@ export default function CashFlowModule() {
 
   const flujoCaja = Array(12).fill(0).map((_, m) => totalIngresos[m] - totalGastos[m]);
 
+  const exportToCSV = () => {
+    const headers = ['Concepto', ...MONTHS];
+    const rows = [];
+    
+    rows.push(['Saldo Inicial', ...Array(12).fill(0)]);
+    rows.push([]);
+    rows.push([`Ingresos ${companyName || 'Empresa'}`]);
+    rows.push(['Ventas Facturas', ...yearlyCashflow.ingresos.facturas.map(v => Math.round(v))]);
+    rows.push(['Ventas Boleta', ...yearlyCashflow.ingresos.boletas.map(v => Math.round(v))]);
+    rows.push(['Notas de crédito', ...Array(12).fill(0)]);
+    rows.push(['Ventas crédito', ...Array(12).fill(0)]);
+    rows.push(['Total Ingresos', ...totalIngresos.map(v => Math.round(v))]);
+    rows.push([]);
+    rows.push(['Gastos']);
+    
+    EXPENSE_CATEGORIES.forEach(cat => {
+      const values = yearlyCashflow.gastos[cat] || Array(12).fill(0);
+      rows.push([cat, ...values.map(v => Math.round(v))]);
+    });
+    rows.push(['Total Gastos', ...totalGastos.map(v => Math.round(v))]);
+    rows.push([]);
+    rows.push(['Flujo de caja económico', ...flujoCaja.map(v => Math.round(v))]);
+    
+    const csvContent = "\uFEFF" + [
+      headers.join(';'),
+      ...rows.map(row => row.map(val => typeof val === 'number' ? val : `"${String(val).replace(/"/g, '""')}"`).join(';'))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Flujo_Caja_${currentYear}_${(companyName || 'Empresa').replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="p-8 text-slate-900 min-h-screen font-sans bg-slate-50">
       <div className="flex justify-between items-center mb-6">
@@ -80,7 +118,10 @@ export default function CashFlowModule() {
           Flujo de Caja {currentYear}
         </h1>
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg transition-colors border border-slate-200 shadow-sm">
+          <button 
+            onClick={exportToCSV}
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg transition-colors border border-slate-200 shadow-sm"
+          >
             <Download size={18} />
             Exportar
           </button>

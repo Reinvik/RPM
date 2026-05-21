@@ -5,6 +5,7 @@ import { useNexusContext } from '../context/NexusContext';
 export const useNexusRPM = () => {
   const { companyId, selectedMonth, selectedYear } = useNexusContext();
   const [loading, setLoading] = useState(true);
+  const [trigger, setTrigger] = useState(0);
   const [data, setData] = useState({
     salesTotal: 0,
     fixedCosts: 0,
@@ -71,8 +72,10 @@ export const useNexusRPM = () => {
         expenses.forEach(exp => {
           const expDate = new Date(exp.fecha);
           if (expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear) {
-            if (exp.tipo === 'Fijo') fixedCosts += Number(exp.monto);
-            if (exp.tipo === 'Variable') variableCosts += Number(exp.monto);
+            if (exp.categoria !== 'Pago Sueldos') {
+              if (exp.tipo === 'Fijo') fixedCosts += Number(exp.monto);
+              if (exp.tipo === 'Variable') variableCosts += Number(exp.monto);
+            }
           }
         });
 
@@ -282,7 +285,7 @@ export const useNexusRPM = () => {
     };
 
     fetchFinancialData();
-  }, [companyId, selectedMonth, selectedYear]);
+  }, [companyId, selectedMonth, selectedYear, trigger]);
 
   const addExpense = async (expenseData) => {
     if (!companyId) return { error: 'No company ID' };
@@ -322,5 +325,5 @@ export const useNexusRPM = () => {
     return { data: newExpense };
   };
 
-  return { data, loading, addExpense };
+  return { data, loading, addExpense, refetchData: () => setTrigger(prev => prev + 1) };
 };

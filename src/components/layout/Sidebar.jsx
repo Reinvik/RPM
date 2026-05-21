@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, LogOut, Settings, BarChart3, DollarSign, FileText, Gauge } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Settings, BarChart3, DollarSign, FileText, Gauge, Calculator } from 'lucide-react';
 import { useNexusContext } from '../../context/NexusContext';
 
 export default function Sidebar({ currentView, setCurrentView }) {
@@ -13,6 +13,7 @@ export default function Sidebar({ currentView, setCurrentView }) {
     { id: 'cashflow', label: 'Flujo de Caja', icon: DollarSign },
     { id: 'vat', label: 'IVA Mensual', icon: FileText },
     { id: 'payroll', label: 'Pago Personal', icon: Users },
+    { id: 'pricing', label: 'Fijación de Precios', icon: Calculator },
   ];
 
   if (isSuperAdmin) {

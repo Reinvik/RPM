@@ -99,63 +99,77 @@ export default function ExpensesModule() {
       {showForm && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8 animate-fade-in">
           <h2 className="text-lg font-bold text-slate-900 mb-4">Registrar Nuevo Egreso</h2>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-            
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Tipo de Egreso</label>
-              <select
-                value={formData.tipo}
-                onChange={(e) => setFormData({...formData, tipo: e.target.value, categoria: ''})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="Variable">Gastos Operacionales (OPEX)</option>
-                <option value="Fijo">Inversiones / Activos (CAPEX)</option>
-              </select>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Tipo de Egreso</label>
+                <select
+                  value={formData.tipo}
+                  onChange={(e) => setFormData({...formData, tipo: e.target.value, categoria: ''})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="Variable">Gastos Operacionales (OPEX)</option>
+                  <option value="Fijo">Inversiones / Activos (CAPEX)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Categoría</label>
+                <select
+                  value={formData.categoria}
+                  onChange={(e) => setFormData({...formData, categoria: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  required
+                >
+                  <option value="">Selecciona una categoría</option>
+                  {(formData.tipo === 'Variable' ? OPEX_CATEGORIES : CAPEX_CATEGORIES).map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Monto ($)</label>
+                <input
+                  type="number"
+                  value={formData.monto}
+                  onChange={(e) => setFormData({...formData, monto: e.target.value})}
+                  placeholder="Ej: 50000"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Fecha</label>
+                <input
+                  type="date"
+                  value={formData.fecha}
+                  onChange={(e) => setFormData({...formData, fecha: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  required
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Categoría</label>
-              <select
-                value={formData.categoria}
-                onChange={(e) => setFormData({...formData, categoria: e.target.value})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                required
-              >
-                <option value="">Selecciona una categoría</option>
-                {(formData.tipo === 'Variable' ? OPEX_CATEGORIES : CAPEX_CATEGORIES).map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-4 border-t border-slate-100">
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input 
+                  type="checkbox" 
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 bg-white"
+                  checked={formData.aplica_credito_iva}
+                  onChange={(e) => setFormData({...formData, aplica_credito_iva: e.target.checked})}
+                />
+                <div>
+                  <span className="text-sm font-semibold text-slate-700 block">Aplica Crédito IVA</span>
+                  <span className="text-xs text-slate-400 block">Descuenta del IVA a pagar mensual</span>
+                </div>
+              </label>
 
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Monto ($)</label>
-              <input
-                type="number"
-                value={formData.monto}
-                onChange={(e) => setFormData({...formData, monto: e.target.value})}
-                placeholder="Ej: 50000"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Fecha</label>
-              <input
-                type="date"
-                value={formData.fecha}
-                onChange={(e) => setFormData({...formData, fecha: e.target.value})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                required
-              />
-            </div>
-
-            <div>
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white p-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-colors disabled:opacity-50 shadow-sm flex items-center justify-center gap-2 self-end md:self-auto"
               >
                 {saving ? 'Guardando...' : 'Guardar Egreso'}
               </button>
