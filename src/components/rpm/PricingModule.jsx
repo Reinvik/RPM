@@ -259,16 +259,12 @@ export default function PricingModule() {
   const pctIva = ventaBruto > 0 ? (ventaIva / ventaBruto) * 100 : 0;
 
   return (
-    <div className="p-8 font-sans bg-slate-50 min-h-screen text-slate-900">
+    <div className="space-y-6 text-slate-900">
       
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <Calculator className="text-blue-600" size={32} />
-            Fijación y Cálculo de Precios
-          </h1>
-          <p className="text-slate-500 mt-1">
+          <p className="text-slate-500 text-sm">
             Calcula el margen de ganancia de tus repuestos e insumos, desglosa el IVA y sincronízalo con tu inventario.
           </p>
         </div>

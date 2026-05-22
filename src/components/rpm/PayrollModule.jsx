@@ -47,22 +47,23 @@ export default function PayrollModule() {
   };
 
   if (loading) {
-    return <div className="p-8 text-slate-600">Cargando nómina...</div>;
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="font-semibold text-slate-600">Cargando nómina...</p>
+      </div>
+    );
   }
 
   return (
-    <div className="p-8 font-sans bg-slate-50 min-h-screen">
-      <div className="flex justify-between items-center mb-8">
+    <div className="space-y-6 text-slate-900">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-            <Users className="text-blue-600" size={32} />
-            Nómina y Liquidaciones
-          </h1>
-          <p className="text-slate-500 mt-1">Gestión de sueldos base y comisiones del personal.</p>
+          <p className="text-slate-500 text-sm">Gestión de sueldos base y comisiones del personal.</p>
         </div>
         <button 
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-colors shadow-sm"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-colors shadow-md text-sm font-semibold"
         >
           <PlusCircle size={20} />
           {showForm ? 'Cerrar Formulario' : 'Agregar Personal'}

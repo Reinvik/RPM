@@ -29,7 +29,12 @@ export default function CashFlowModule() {
   const currentYear = new Date().getFullYear();
 
   if (loading || !yearlyCashflow) {
-    return <div className="p-8 text-slate-600 min-h-screen">Cargando flujo de caja...</div>;
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="font-semibold text-slate-600">Cargando flujo de caja...</p>
+      </div>
+    );
   }
 
   const fmt = (num) => {
@@ -111,19 +116,21 @@ export default function CashFlowModule() {
   };
 
   return (
-    <div className="p-8 text-slate-900 min-h-screen font-sans bg-slate-50">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold flex items-center gap-3 text-slate-900">
-          <DollarSign className="text-emerald-600" size={32} />
-          Flujo de Caja {currentYear}
-        </h1>
+    <div className="space-y-6 text-slate-900">
+      <div className="flex justify-between items-center">
+        <div>
+          <span className="text-sm font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-fit">
+            <DollarSign size={14} />
+            Período Anual: {currentYear}
+          </span>
+        </div>
         <div className="flex gap-3">
           <button 
             onClick={exportToCSV}
-            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg transition-colors border border-slate-200 shadow-sm"
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl transition-colors border border-slate-200 shadow-sm text-sm font-semibold"
           >
             <Download size={18} />
-            Exportar
+            Exportar CSV
           </button>
         </div>
       </div>

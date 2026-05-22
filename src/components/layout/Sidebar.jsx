@@ -8,16 +8,16 @@ export default function Sidebar({ currentView, setCurrentView }) {
   const isSuperAdmin = userRole === 'superadmin' || userRole === 'NexusOwner';
 
   const navItems = [
-    { id: 'dashboard', label: 'Resumen', icon: LayoutDashboard },
-    { id: 'expenses', label: 'OPEX / CAPEX', icon: Settings },
-    { id: 'cashflow', label: 'Flujo de Caja', icon: DollarSign },
-    { id: 'vat', label: 'IVA Mensual', icon: FileText },
-    { id: 'payroll', label: 'Pago Personal', icon: Users },
+    { id: 'dashboard', label: 'Resumen General', icon: LayoutDashboard },
+    { id: 'expenses', label: 'Gastos OPEX / CAPEX', icon: Settings },
+    { id: 'cashflow', label: 'Flujo de Caja Anual', icon: DollarSign },
+    { id: 'vat', label: 'Cálculo de IVA Mensual', icon: FileText },
+    { id: 'payroll', label: 'Liquidaciones & Personal', icon: Users },
     { id: 'pricing', label: 'Fijación de Precios', icon: Calculator },
   ];
 
   if (isSuperAdmin) {
-    navItems.push({ id: 'admin', label: 'Super Admin', icon: Settings });
+    navItems.push({ id: 'admin', label: 'Panel Super Admin', icon: Settings });
   }
 
   return (

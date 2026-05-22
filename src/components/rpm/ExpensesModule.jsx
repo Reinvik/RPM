@@ -135,7 +135,7 @@ export default function ExpensesModule() {
 
   if (loading) {
     return (
-      <div className="p-8 font-sans bg-slate-50 min-h-screen flex flex-col items-center justify-center text-slate-500">
+      <div className="flex flex-col items-center justify-center py-12 text-slate-500">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
         <p className="font-semibold text-slate-600">Cargando registros de egresos...</p>
       </div>
@@ -143,16 +143,12 @@ export default function ExpensesModule() {
   }
 
   return (
-    <div className="p-8 font-sans bg-slate-50 min-h-screen text-slate-900">
+    <div className="space-y-6 text-slate-900">
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
-            <Briefcase className="text-blue-600" size={32} />
-            Egresos: OPEX y CAPEX
-          </h1>
-          <p className="text-slate-500 mt-1">
+          <p className="text-slate-500 text-sm">
             Gestión estructurada de gastos de operación e inversiones, clasificados por recurrencia.
           </p>
         </div>
@@ -171,6 +167,7 @@ export default function ExpensesModule() {
           {showForm ? 'Cerrar Formulario' : 'Registrar Nuevo Egreso'}
         </button>
       </div>
+
 
       {/* Formulario de Registro */}
       {showForm && (
