@@ -71,7 +71,7 @@ export default function ExpensesModule() {
   // Crédito IVA total de este mes (19% de los gastos afectos a IVA)
   const totalIvaCredito = expenses
     .filter(e => e.aplica_credito_iva)
-    .reduce((sum, e) => sum + (Number(e.monto) * 0.19), 0);
+    .reduce((sum, e) => sum + (Number(e.monto) - Number(e.monto) / 1.19), 0);
 
   // Determinar si el gasto es heredado de un mes anterior
   const isInherited = (exp) => {

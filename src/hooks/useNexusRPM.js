@@ -12,6 +12,7 @@ export const useNexusRPM = () => {
     variableCosts: 0,
     expenses: [],
     mechanics: [],
+    sales: [],
     yearlyCashflow: { ingresos: { facturas: [], boletas: [] }, gastos: {} }
   });
 
@@ -141,6 +142,7 @@ export const useNexusRPM = () => {
         };
 
         let salesTotal = 0; // Mes actual
+        const currentMonthSales = [];
         
         // Sumar ventas POS
         (posSales || []).forEach(sale => {
@@ -152,7 +154,16 @@ export const useNexusRPM = () => {
             if (sale.document_type === 'Factura') yearlyCashflow.ingresos.facturas[m] += val;
             else yearlyCashflow.ingresos.boletas[m] += val; // boletas o nulos
             
-            if (m === currentMonth) salesTotal += val;
+            if (m === currentMonth) {
+              salesTotal += val;
+              currentMonthSales.push({
+                id: sale.id || `pos-${sale.sold_at}-${val}`,
+                type: 'Sala de Ventas',
+                document_type: sale.document_type || 'Boleta',
+                total: val,
+                fecha: sale.sold_at.split('T')[0]
+              });
+            }
           }
         });
 
@@ -166,7 +177,16 @@ export const useNexusRPM = () => {
             if (ticket.document_type === 'Factura') yearlyCashflow.ingresos.facturas[m] += val;
             else yearlyCashflow.ingresos.boletas[m] += val;
             
-            if (m === currentMonth) salesTotal += val;
+            if (m === currentMonth) {
+              salesTotal += val;
+              currentMonthSales.push({
+                id: ticket.id,
+                type: 'Servicio Taller',
+                document_type: ticket.document_type || 'Boleta',
+                total: val,
+                fecha: ticket.close_date.split('T')[0]
+              });
+            }
           }
         });
 
@@ -330,6 +350,7 @@ export const useNexusRPM = () => {
           variableCosts,
           expenses: filteredExpenses,
           mechanics,
+          sales: currentMonthSales,
           yearlyCashflow
         });
 
