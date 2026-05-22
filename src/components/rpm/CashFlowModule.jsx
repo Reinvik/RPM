@@ -230,8 +230,8 @@ export default function CashFlowModule() {
             <tbody className="divide-y divide-slate-100">
               
               {/* SALDO INICIAL */}
-              <tr className="bg-slate-50/50 hover:bg-slate-100/50 transition-colors font-medium">
-                <td className="px-4 py-2.5 font-bold sticky left-0 bg-slate-50/50 border-r border-slate-200 z-10 text-slate-700">
+              <tr className="bg-slate-100 hover:bg-slate-150 transition-colors font-medium">
+                <td className="px-4 py-2.5 font-bold sticky left-0 bg-slate-100 border-r border-slate-200 z-10 text-slate-700">
                   Saldo Inicial Caja
                 </td>
                 {MONTHS.map((_, idx) => (
@@ -242,11 +242,11 @@ export default function CashFlowModule() {
               </tr>
 
               {/* TÍTULO SECCIÓN: INGRESOS */}
-              <tr className="bg-blue-50/30">
-                <td className="px-4 py-2 font-extrabold text-blue-700 sticky left-0 bg-blue-50/30 border-r border-slate-200 z-10 whitespace-nowrap">
+              <tr className="bg-blue-50">
+                <td className="px-4 py-2 font-extrabold text-blue-700 sticky left-0 bg-blue-50 border-r border-slate-200 z-10 whitespace-nowrap">
                   INGRESOS OPERACIONALES
                 </td>
-                {MONTHS.map((_, idx) => <td key={idx} className="border-l border-slate-200"></td>)}
+                {MONTHS.map((_, idx) => <td key={idx} className="border-l border-slate-200 bg-blue-50/20"></td>)}
               </tr>
 
               {/* Categorías de Ingresos */}
@@ -276,29 +276,28 @@ export default function CashFlowModule() {
               </tr>
 
               {/* TOTAL INGRESOS */}
-              <tr className="bg-blue-50/60 border-y border-blue-100 font-bold">
-                <td className="px-4 py-2.5 text-blue-800 sticky left-0 bg-blue-50/60 border-r border-slate-200 z-10">
+              <tr className="bg-blue-100 font-bold border-y border-blue-200">
+                <td className="px-4 py-2.5 text-blue-800 sticky left-0 bg-blue-100 border-r border-slate-200 z-10">
                   Total Ingresos
                 </td>
                 {MONTHS.map((_, idx) => (
-                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-blue-800 font-extrabold">
+                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-blue-800 font-extrabold bg-blue-50/30">
                     ${fmt(totalIngresos[idx])}
                   </td>
                 ))}
               </tr>
 
               {/* TÍTULO SECCIÓN: GASTOS */}
-              <tr className="bg-rose-50/30">
-                <td className="px-4 py-2 font-extrabold text-rose-700 sticky left-0 bg-rose-50/30 border-r border-slate-200 z-10 whitespace-nowrap">
+              <tr className="bg-rose-50">
+                <td className="px-4 py-2 font-extrabold text-rose-700 sticky left-0 bg-rose-50 border-r border-slate-200 z-10 whitespace-nowrap">
                   GASTOS Y EGRESOS
                 </td>
-                {MONTHS.map((_, idx) => <td key={idx} className="border-l border-slate-200"></td>)}
+                {MONTHS.map((_, idx) => <td key={idx} className="border-l border-slate-200 bg-rose-50/20"></td>)}
               </tr>
 
               {/* Categorías de Gastos Dinámicos */}
               {allExpenseCategories.map((cat, idx) => {
                 const values = yearlyCashflow.gastos[cat] || Array(12).fill(0);
-                // Si la categoría tiene todos los valores en 0, la dejamos con color más suave
                 const isAllZero = values.every(v => v === 0);
                 return (
                   <tr key={idx} className={`hover:bg-slate-50 transition-colors group bg-white font-medium ${isAllZero ? 'text-slate-400' : 'text-slate-700'}`}>
@@ -315,20 +314,20 @@ export default function CashFlowModule() {
               })}
 
               {/* TOTAL GASTOS */}
-              <tr className="bg-rose-50/60 border-y border-rose-100 font-bold">
-                <td className="px-4 py-2.5 text-rose-800 sticky left-0 bg-rose-50/60 border-r border-slate-200 z-10">
+              <tr className="bg-rose-100 font-bold border-y border-rose-200">
+                <td className="px-4 py-2.5 text-rose-800 sticky left-0 bg-rose-100 border-r border-slate-200 z-10">
                   Total Gastos
                 </td>
                 {MONTHS.map((_, idx) => (
-                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-rose-800 font-extrabold">
+                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-rose-800 font-extrabold bg-rose-50/30">
                     ${fmt(totalGastos[idx])}
                   </td>
                 ))}
               </tr>
 
-              {/* FLUJO NETO MENSUAL (Flujo de caja económico) */}
-              <tr className="bg-slate-100/80 border-y border-slate-200 font-bold text-slate-800">
-                <td className="px-4 py-2.5 sticky left-0 bg-slate-100/80 border-r border-slate-200 z-10 text-[11px] uppercase tracking-wider">
+              {/* FLUJO NETO MENSUAL */}
+              <tr className="bg-slate-200 font-bold border-y border-slate-350 text-slate-800">
+                <td className="px-4 py-2.5 sticky left-0 bg-slate-200 border-r border-slate-300 z-10 text-[10px] uppercase tracking-wider">
                   Flujo Neto Mensual
                 </td>
                 {MONTHS.map((_, idx) => {
@@ -337,7 +336,7 @@ export default function CashFlowModule() {
                     <td 
                       key={idx} 
                       className={`px-3 py-2.5 text-right border-l border-slate-200 font-extrabold
-                        ${neto > 0 ? 'text-emerald-600 bg-emerald-50/20' : neto < 0 ? 'text-rose-600 bg-rose-50/20' : 'text-slate-500'}`}
+                        ${neto > 0 ? 'text-emerald-700 bg-emerald-50/30' : neto < 0 ? 'text-rose-700 bg-rose-50/30' : 'text-slate-500 bg-slate-50/30'}`}
                     >
                       ${fmt(neto)}
                     </td>
@@ -346,8 +345,8 @@ export default function CashFlowModule() {
               </tr>
 
               {/* SALDO FINAL ACUMULADO */}
-              <tr className="bg-indigo-50/40 border-y border-indigo-100 font-extrabold text-indigo-950">
-                <td className="px-4 py-3 sticky left-0 bg-indigo-50 border-r border-indigo-200 z-10 text-sm">
+              <tr className="bg-indigo-100 font-bold border-y border-indigo-200 text-indigo-950">
+                <td className="px-4 py-3 sticky left-0 bg-indigo-100 border-r border-indigo-200 z-10 text-sm">
                   Saldo Final Acumulado
                 </td>
                 {MONTHS.map((_, idx) => {
@@ -355,7 +354,7 @@ export default function CashFlowModule() {
                   return (
                     <td 
                       key={idx} 
-                      className={`px-3 py-3 text-right border-l border-indigo-100 text-sm font-black bg-indigo-50/50
+                      className={`px-3 py-3 text-right border-l border-indigo-200 text-sm font-black bg-indigo-50/20
                         ${saldoFinal >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}
                     >
                       ${fmt(saldoFinal)}
@@ -363,7 +362,6 @@ export default function CashFlowModule() {
                   );
                 })}
               </tr>
-
             </tbody>
           </table>
         </div>
