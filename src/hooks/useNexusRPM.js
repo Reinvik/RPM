@@ -70,8 +70,21 @@ export const useNexusRPM = () => {
         let variableCosts = 0;
 
         expenses.forEach(exp => {
-          const expDate = new Date(exp.fecha);
-          if (expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear) {
+          if (!exp.fecha) return;
+          const [yr, mo] = exp.fecha.split('-').map(Number);
+          const expYear = yr;
+          const expMonth = mo - 1;
+
+          const isVariableInCurrentMonth = exp.tipo === 'Variable' && 
+            expMonth === currentMonth && 
+            expYear === currentYear;
+            
+          const isFixedActive = exp.tipo === 'Fijo' && (
+            expYear < currentYear || 
+            (expYear === currentYear && expMonth <= currentMonth)
+          );
+
+          if (isVariableInCurrentMonth || isFixedActive) {
             if (exp.categoria !== 'Pago Sueldos') {
               if (exp.tipo === 'Fijo') fixedCosts += Number(exp.monto);
               if (exp.tipo === 'Variable') variableCosts += Number(exp.monto);
@@ -154,13 +167,28 @@ export const useNexusRPM = () => {
 
         // Sumar Gastos al Flujo Anual
         expenses.forEach(exp => {
-          const expDate = new Date(exp.fecha);
-          if (expDate.getFullYear() === currentYear) {
-            const m = expDate.getMonth();
-            if (!yearlyCashflow.gastos[exp.categoria]) {
-              yearlyCashflow.gastos[exp.categoria] = Array(12).fill(0);
+          if (exp.categoria === 'Pago Sueldos') return; // Se calcula aparte dinámicamente
+          if (!exp.fecha) return;
+
+          const [yr, mo] = exp.fecha.split('-').map(Number);
+          const expYear = yr;
+          const expMonth = mo - 1;
+
+          if (!yearlyCashflow.gastos[exp.categoria]) {
+            yearlyCashflow.gastos[exp.categoria] = Array(12).fill(0);
+          }
+
+          if (exp.tipo === 'Variable') {
+            if (expYear === currentYear) {
+              yearlyCashflow.gastos[exp.categoria][expMonth] += Number(exp.monto);
             }
-            yearlyCashflow.gastos[exp.categoria][m] += Number(exp.monto);
+          } else if (exp.tipo === 'Fijo') {
+            for (let m = 0; m < 12; m++) {
+              const isBeforeOrEqual = expYear < currentYear || (expYear === currentYear && expMonth <= m);
+              if (isBeforeOrEqual) {
+                yearlyCashflow.gastos[exp.categoria][m] += Number(exp.monto);
+              }
+            }
           }
         });
 
@@ -264,8 +292,21 @@ export const useNexusRPM = () => {
         });
 
         const filteredExpenses = expenses.filter(exp => {
-          const expDate = new Date(exp.fecha);
-          return expDate.getMonth() === currentMonth && expDate.getFullYear() === currentYear;
+          if (!exp.fecha) return false;
+          const [yr, mo] = exp.fecha.split('-').map(Number);
+          const expYear = yr;
+          const expMonth = mo - 1;
+
+          const isVariableInCurrentMonth = exp.tipo === 'Variable' && 
+            expMonth === currentMonth && 
+            expYear === currentYear;
+            
+          const isFixedActive = exp.tipo === 'Fijo' && (
+            expYear < currentYear || 
+            (expYear === currentYear && expMonth <= currentMonth)
+          );
+
+          return isVariableInCurrentMonth || isFixedActive;
         });
 
         setData({
@@ -307,12 +348,33 @@ export const useNexusRPM = () => {
 
     // Actualizar estado local
     setData(prev => {
-      const expenses = [...prev.expenses, newExpense];
+      if (!newExpense.fecha) return prev;
+      const [yr, mo] = newExpense.fecha.split('-').map(Number);
+      const expYear = yr;
+      const expMonth = mo - 1;
+
+      const isVariableInCurrentMonth = newExpense.tipo === 'Variable' && 
+        expMonth === selectedMonth && 
+        expYear === selectedYear;
+        
+      const isFixedActive = newExpense.tipo === 'Fijo' && (
+        expYear < selectedYear || 
+        (expYear === selectedYear && expMonth <= selectedMonth)
+      );
+
+      const applies = isVariableInCurrentMonth || isFixedActive;
+
+      let expenses = prev.expenses;
       let fixedCosts = prev.fixedCosts;
       let variableCosts = prev.variableCosts;
-      
-      if (newExpense.tipo === 'Fijo') fixedCosts += Number(newExpense.monto);
-      if (newExpense.tipo === 'Variable') variableCosts += Number(newExpense.monto);
+
+      if (applies) {
+        expenses = [...prev.expenses, newExpense];
+        if (newExpense.categoria !== 'Pago Sueldos') {
+          if (newExpense.tipo === 'Fijo') fixedCosts += Number(newExpense.monto);
+          if (newExpense.tipo === 'Variable') variableCosts += Number(newExpense.monto);
+        }
+      }
 
       return {
         ...prev,
@@ -325,5 +387,40 @@ export const useNexusRPM = () => {
     return { data: newExpense };
   };
 
-  return { data, loading, addExpense, refetchData: () => setTrigger(prev => prev + 1) };
+  const deleteExpense = async (id) => {
+    const { error } = await supabase
+      .schema('garage')
+      .from('financial_expenses')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error("Error deleting expense:", error);
+      return { error };
+    }
+
+    // Actualizar estado local
+    setData(prev => {
+      const deleted = prev.expenses.find(e => e.id === id);
+      const expenses = prev.expenses.filter(e => e.id !== id);
+      let fixedCosts = prev.fixedCosts;
+      let variableCosts = prev.variableCosts;
+
+      if (deleted && deleted.categoria !== 'Pago Sueldos') {
+        if (deleted.tipo === 'Fijo') fixedCosts -= Number(deleted.monto);
+        if (deleted.tipo === 'Variable') variableCosts -= Number(deleted.monto);
+      }
+
+      return {
+        ...prev,
+        expenses,
+        fixedCosts,
+        variableCosts
+      };
+    });
+
+    return { success: true };
+  };
+
+  return { data, loading, addExpense, deleteExpense, refetchData: () => setTrigger(prev => prev + 1) };
 };

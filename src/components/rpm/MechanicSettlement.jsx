@@ -227,7 +227,7 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
         .from('financial_expenses')
         .insert({
           company_id: companyId,
-          tipo: 'Fijo',
+          tipo: 'Variable', // Registramos como variable para que aplique solo al mes liquidado y no se repita
           categoria: 'Pago Sueldos',
           monto: Math.round(liquidoAPagar),
           fecha: new Date().toISOString().split('T')[0],
