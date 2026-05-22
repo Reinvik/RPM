@@ -1,5 +1,15 @@
 import React from 'react';
-import { DollarSign, Download, Save } from 'lucide-react';
+import { 
+  DollarSign, 
+  Download, 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  TrendingUp, 
+  Wallet,
+  Calendar,
+  Percent,
+  FileText
+} from 'lucide-react';
 import { useNexusContext } from '../../context/NexusContext';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 
@@ -31,57 +41,58 @@ export default function CashFlowModule() {
   if (loading || !yearlyCashflow) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-slate-500">
-        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="font-semibold text-slate-600">Cargando flujo de caja...</p>
+        <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="font-semibold text-slate-600">Cargando flujo de caja anual...</p>
       </div>
     );
   }
 
   const fmt = (num) => {
-    if (!num || num === 0) return '0';
-    return Number(num).toLocaleString('es-CL');
+    if (num === undefined || num === null) return '0';
+    return Math.round(num).toLocaleString('es-CL');
   };
 
-  // Helper para renderizar celdas de valores y totales
-  const renderValueCells = (valuesArray) => {
-    return MONTHS.map((_, idx) => (
-      <td key={idx} className="px-3 py-2 min-w-[100px] text-right border-l border-slate-200 text-slate-700">
-        {fmt(valuesArray[idx])}
-      </td>
-    ));
-  };
+  // 1. Obtener todas las categorías de gastos dinámicamente
+  const allExpenseCategories = Array.from(new Set([
+    ...EXPENSE_CATEGORIES,
+    ...Object.keys(yearlyCashflow.gastos || {})
+  ])).sort();
 
-  const renderTotalCells = (valuesArray, isEconomicFlow = false) => {
-    return MONTHS.map((_, idx) => (
-      <td 
-        key={idx} 
-        className={`px-3 py-2 min-w-[100px] text-right border-l border-slate-200 font-bold
-          ${isEconomicFlow ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 text-slate-800'}`}
-      >
-        {fmt(valuesArray[idx])}
-      </td>
-    ));
-  };
-
-  // Calcular totales por mes
+  // 2. Calcular ingresos mensuales
   const totalIngresos = Array(12).fill(0).map((_, m) => 
     (yearlyCashflow.ingresos.facturas[m] || 0) + 
     (yearlyCashflow.ingresos.boletas[m] || 0)
   );
 
+  // 3. Calcular egresos mensuales
   const totalGastos = Array(12).fill(0).map((_, m) => {
     let sum = 0;
-    Object.values(yearlyCashflow.gastos).forEach(arr => sum += (arr[m] || 0));
+    Object.values(yearlyCashflow.gastos || {}).forEach(arr => sum += (arr[m] || 0));
     return sum;
   });
 
-  const flujoCaja = Array(12).fill(0).map((_, m) => totalIngresos[m] - totalGastos[m]);
+  // 4. Calcular Flujo Neto Mensual
+  const flujoNetoMensual = Array(12).fill(0).map((_, m) => totalIngresos[m] - totalGastos[m]);
+
+  // 5. Calcular Saldos Acumulativos
+  const saldosIniciales = Array(12).fill(0);
+  const saldosFinales = Array(12).fill(0);
+  for (let m = 0; m < 12; m++) {
+    saldosIniciales[m] = m === 0 ? 0 : saldosFinales[m - 1];
+    saldosFinales[m] = saldosIniciales[m] + flujoNetoMensual[m];
+  }
+
+  // 6. KPIs Totales Anuales
+  const anualIngresos = totalIngresos.reduce((sum, val) => sum + val, 0);
+  const anualGastos = totalGastos.reduce((sum, val) => sum + val, 0);
+  const anualNeto = anualIngresos - anualGastos;
+  const saldoFinalProyectado = saldosFinales[11];
 
   const exportToCSV = () => {
     const headers = ['Concepto', ...MONTHS];
     const rows = [];
     
-    rows.push(['Saldo Inicial', ...Array(12).fill(0)]);
+    rows.push(['Saldo Inicial', ...saldosIniciales.map(v => Math.round(v))]);
     rows.push([]);
     rows.push([`Ingresos ${companyName || 'Empresa'}`]);
     rows.push(['Ventas Facturas', ...yearlyCashflow.ingresos.facturas.map(v => Math.round(v))]);
@@ -92,13 +103,14 @@ export default function CashFlowModule() {
     rows.push([]);
     rows.push(['Gastos']);
     
-    EXPENSE_CATEGORIES.forEach(cat => {
+    allExpenseCategories.forEach(cat => {
       const values = yearlyCashflow.gastos[cat] || Array(12).fill(0);
       rows.push([cat, ...values.map(v => Math.round(v))]);
     });
     rows.push(['Total Gastos', ...totalGastos.map(v => Math.round(v))]);
     rows.push([]);
-    rows.push(['Flujo de caja económico', ...flujoCaja.map(v => Math.round(v))]);
+    rows.push(['Flujo Neto Mensual', ...flujoNetoMensual.map(v => Math.round(v))]);
+    rows.push(['Saldo Final Acumulado', ...saldosFinales.map(v => Math.round(v))]);
     
     const csvContent = "\uFEFF" + [
       headers.join(';'),
@@ -116,35 +128,100 @@ export default function CashFlowModule() {
   };
 
   return (
-    <div className="space-y-6 text-slate-900">
-      <div className="flex justify-between items-center">
+    <div className="space-y-8 text-slate-900">
+      
+      {/* Cabecera con selector y exportación */}
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
         <div>
-          <span className="text-sm font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-fit">
-            <DollarSign size={14} />
-            Período Anual: {currentYear}
+          <span className="text-xs font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-sm">
+            <Calendar size={13} className="animate-pulse" />
+            Periodo Financiero Anual: {currentYear}
           </span>
         </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={exportToCSV}
-            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl transition-colors border border-slate-200 shadow-sm text-sm font-semibold"
-          >
-            <Download size={18} />
-            Exportar CSV
-          </button>
-        </div>
+        <button 
+          onClick={exportToCSV}
+          className="flex items-center justify-center gap-2 bg-gradient-to-r from-slate-800 to-slate-950 hover:from-slate-900 hover:to-black text-white px-5 py-3 rounded-xl transition-all duration-300 shadow-md hover:shadow-lg text-xs font-extrabold tracking-wider uppercase"
+        >
+          <Download size={14} />
+          Exportar CSV Financiero
+        </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xl">
+      {/* Grid de KPIs Anuales */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        
+        {/* KPI: Ingresos Anuales */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/5 rounded-full blur-xl"></div>
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Ingresos Totales</span>
+              <ArrowUpRight className="text-blue-500" size={16} />
+            </div>
+            <p className="text-xl font-extrabold text-slate-800">${fmt(anualIngresos)}</p>
+          </div>
+          <p className="text-[9px] text-slate-400 mt-2 font-medium">Suma acumulada de facturas y boletas</p>
+        </div>
+
+        {/* KPI: Gastos Anuales */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-rose-500/5 rounded-full blur-xl"></div>
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Gastos Totales</span>
+              <ArrowDownRight className="text-rose-500" size={16} />
+            </div>
+            <p className="text-xl font-extrabold text-slate-800">${fmt(anualGastos)}</p>
+          </div>
+          <p className="text-[9px] text-slate-400 mt-2 font-medium">Suma de OPEX e inversiones de CAPEX</p>
+        </div>
+
+        {/* KPI: Flujo Neto Anual */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-500/5 rounded-full blur-xl"></div>
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Balance Neto Anual</span>
+              <TrendingUp className="text-emerald-500" size={16} />
+            </div>
+            <p className={`text-xl font-extrabold ${anualNeto >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              ${fmt(anualNeto)}
+            </p>
+          </div>
+          <p className="text-[9px] text-slate-400 mt-2 font-medium">Rendimiento neto de caja anual</p>
+        </div>
+
+        {/* KPI: Saldo Final Proyectado */}
+        <div className={`p-5 rounded-2xl border shadow-sm relative overflow-hidden flex flex-col justify-between transition-all ${
+          saldoFinalProyectado >= 0 
+            ? 'bg-emerald-50/40 border-emerald-200 text-emerald-950' 
+            : 'bg-rose-50/40 border-rose-200 text-rose-950'
+        }`}>
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Saldo Final Proyectado</span>
+              <Wallet className={saldoFinalProyectado >= 0 ? 'text-emerald-600' : 'text-rose-600'} size={16} />
+            </div>
+            <p className={`text-xl font-extrabold ${saldoFinalProyectado >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              ${fmt(saldoFinalProyectado)}
+            </p>
+          </div>
+          <p className="text-[9px] text-slate-400 mt-2 font-medium">Caja neta disponible en Diciembre</p>
+        </div>
+
+      </div>
+
+      {/* Tabla de Flujo de Caja Anual */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xl">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 uppercase tracking-wider text-[10px]">
               <tr>
-                <th className="px-4 py-3 min-w-[300px] sticky left-0 bg-slate-50 z-10 border-r border-slate-200 font-bold">
-                  CONCEPTO
+                <th className="px-4 py-3.5 min-w-[280px] sticky left-0 bg-slate-50 z-10 border-r border-slate-200 font-extrabold text-slate-800">
+                  Concepto Financiero
                 </th>
                 {MONTHS.map(m => (
-                  <th key={m} className="px-3 py-2 min-w-[100px] text-right border-l border-slate-200 font-semibold text-slate-600">
+                  <th key={m} className="px-3 py-3 min-w-[95px] text-right border-l border-slate-200 font-extrabold text-slate-600">
                     {m}
                   </th>
                 ))}
@@ -152,83 +229,139 @@ export default function CashFlowModule() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               
-              {/* Saldo Inicial */}
-              <tr className="bg-white hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-2 font-semibold sticky left-0 bg-white border-r border-slate-200 z-10 text-slate-700">
-                  Saldo Inicial
+              {/* SALDO INICIAL */}
+              <tr className="bg-slate-50/50 hover:bg-slate-100/50 transition-colors font-medium">
+                <td className="px-4 py-2.5 font-bold sticky left-0 bg-slate-50/50 border-r border-slate-200 z-10 text-slate-700">
+                  Saldo Inicial Caja
                 </td>
-                {MONTHS.map((_, idx) => <td key={idx} className="px-3 py-2 text-right border-l border-slate-200 text-slate-400">0</td>)}
+                {MONTHS.map((_, idx) => (
+                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-slate-600 font-semibold">
+                    ${fmt(saldosIniciales[idx])}
+                  </td>
+                ))}
               </tr>
 
-              {/* Título Ingresos */}
-              <tr className="bg-slate-50">
-                <td className="px-4 py-2 font-bold text-blue-600 sticky left-0 bg-slate-50 border-r border-slate-200 z-10 whitespace-nowrap">
-                  Ingresos {companyName}
+              {/* TÍTULO SECCIÓN: INGRESOS */}
+              <tr className="bg-blue-50/30">
+                <td className="px-4 py-2 font-extrabold text-blue-700 sticky left-0 bg-blue-50/30 border-r border-slate-200 z-10 whitespace-nowrap">
+                  INGRESOS OPERACIONALES
                 </td>
-                {MONTHS.map((_, idx) => <td key={idx} className="bg-slate-50 border-l border-slate-200"></td>)}
+                {MONTHS.map((_, idx) => <td key={idx} className="border-l border-slate-200"></td>)}
               </tr>
 
-              {/* Categorías Ingresos */}
-              <tr className="hover:bg-slate-50 transition-colors group bg-white">
-                <td className="px-4 py-1.5 text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Ventas Facturas</td>
-                {renderValueCells(yearlyCashflow.ingresos.facturas)}
+              {/* Categorías de Ingresos */}
+              <tr className="hover:bg-slate-50 transition-colors group bg-white font-medium">
+                <td className="px-4 py-2 text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Ventas Facturas</td>
+                {MONTHS.map((_, idx) => (
+                  <td key={idx} className="px-3 py-2 text-right border-l border-slate-200 text-slate-600">
+                    ${fmt(yearlyCashflow.ingresos.facturas[idx])}
+                  </td>
+                ))}
               </tr>
-              <tr className="hover:bg-slate-50 transition-colors group bg-white">
-                <td className="px-4 py-1.5 text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Ventas Boleta</td>
-                {renderValueCells(yearlyCashflow.ingresos.boletas)}
+              <tr className="hover:bg-slate-50 transition-colors group bg-white font-medium">
+                <td className="px-4 py-2 text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Ventas Boleta</td>
+                {MONTHS.map((_, idx) => (
+                  <td key={idx} className="px-3 py-2 text-right border-l border-slate-200 text-slate-600">
+                    ${fmt(yearlyCashflow.ingresos.boletas[idx])}
+                  </td>
+                ))}
               </tr>
-              <tr className="hover:bg-slate-50 transition-colors group bg-white">
-                <td className="px-4 py-1.5 text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Notas de crédito</td>
-                {MONTHS.map((_, idx) => <td key={idx} className="px-3 py-2 text-right border-l border-slate-200 text-slate-400">0</td>)}
+              <tr className="hover:bg-slate-50 transition-colors group bg-white text-slate-400 font-medium">
+                <td className="px-4 py-2 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Notas de Crédito</td>
+                {MONTHS.map((_, idx) => <td key={idx} className="px-3 py-2 text-right border-l border-slate-200">$0</td>)}
               </tr>
-              <tr className="hover:bg-slate-50 transition-colors group bg-white">
-                <td className="px-4 py-1.5 text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Ventas crédito</td>
-                {MONTHS.map((_, idx) => <td key={idx} className="px-3 py-2 text-right border-l border-slate-200 text-slate-400">0</td>)}
+              <tr className="hover:bg-slate-50 transition-colors group bg-white text-slate-400 font-medium">
+                <td className="px-4 py-2 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Ventas Crédito</td>
+                {MONTHS.map((_, idx) => <td key={idx} className="px-3 py-2 text-right border-l border-slate-200">$0</td>)}
               </tr>
 
-              {/* Total Ingresos */}
-              <tr className="bg-blue-50 border-y border-blue-100">
-                <td className="px-4 py-2 font-bold text-blue-700 sticky left-0 bg-blue-50 border-r border-slate-200 z-10">
+              {/* TOTAL INGRESOS */}
+              <tr className="bg-blue-50/60 border-y border-blue-100 font-bold">
+                <td className="px-4 py-2.5 text-blue-800 sticky left-0 bg-blue-50/60 border-r border-slate-200 z-10">
                   Total Ingresos
                 </td>
-                {renderTotalCells(totalIngresos)}
+                {MONTHS.map((_, idx) => (
+                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-blue-800 font-extrabold">
+                    ${fmt(totalIngresos[idx])}
+                  </td>
+                ))}
               </tr>
 
-              {/* Título Gastos */}
-              <tr className="bg-slate-50">
-                <td className="px-4 py-2 font-bold text-rose-600 sticky left-0 bg-slate-50 border-r border-slate-200 z-10 whitespace-nowrap">
-                  Gastos
+              {/* TÍTULO SECCIÓN: GASTOS */}
+              <tr className="bg-rose-50/30">
+                <td className="px-4 py-2 font-extrabold text-rose-700 sticky left-0 bg-rose-50/30 border-r border-slate-200 z-10 whitespace-nowrap">
+                  GASTOS Y EGRESOS
                 </td>
-                {MONTHS.map((_, idx) => <td key={idx} className="bg-slate-50 border-l border-slate-200"></td>)}
+                {MONTHS.map((_, idx) => <td key={idx} className="border-l border-slate-200"></td>)}
               </tr>
 
-              {/* Categorías Gastos */}
-              {EXPENSE_CATEGORIES.map((cat, idx) => {
+              {/* Categorías de Gastos Dinámicos */}
+              {allExpenseCategories.map((cat, idx) => {
                 const values = yearlyCashflow.gastos[cat] || Array(12).fill(0);
+                // Si la categoría tiene todos los valores en 0, la dejamos con color más suave
+                const isAllZero = values.every(v => v === 0);
                 return (
-                  <tr key={idx} className="hover:bg-slate-50 transition-colors group bg-white">
-                    <td className="px-4 py-1.5 text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">
+                  <tr key={idx} className={`hover:bg-slate-50 transition-colors group bg-white font-medium ${isAllZero ? 'text-slate-400' : 'text-slate-700'}`}>
+                    <td className="px-4 py-2 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">
                       {cat}
                     </td>
-                    {renderValueCells(values)}
+                    {MONTHS.map((_, mIdx) => (
+                      <td key={mIdx} className="px-3 py-2 text-right border-l border-slate-200">
+                        {values[mIdx] > 0 ? `$${fmt(values[mIdx])}` : '$0'}
+                      </td>
+                    ))}
                   </tr>
                 );
               })}
 
-              {/* Total Gastos */}
-              <tr className="bg-rose-50 border-y border-rose-100">
-                <td className="px-4 py-2 font-bold text-rose-700 sticky left-0 bg-rose-50 border-r border-slate-200 z-10">
-                  Total gastos
+              {/* TOTAL GASTOS */}
+              <tr className="bg-rose-50/60 border-y border-rose-100 font-bold">
+                <td className="px-4 py-2.5 text-rose-800 sticky left-0 bg-rose-50/60 border-r border-slate-200 z-10">
+                  Total Gastos
                 </td>
-                {renderTotalCells(totalGastos)}
+                {MONTHS.map((_, idx) => (
+                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-rose-800 font-extrabold">
+                    ${fmt(totalGastos[idx])}
+                  </td>
+                ))}
               </tr>
 
-              {/* Flujo de caja económico */}
-              <tr className="bg-emerald-50 border-y border-emerald-100 text-emerald-700">
-                <td className="px-4 py-3 font-bold sticky left-0 bg-emerald-50 border-r border-slate-200 z-10 text-base">
-                  Flujo de caja económico
+              {/* FLUJO NETO MENSUAL (Flujo de caja económico) */}
+              <tr className="bg-slate-100/80 border-y border-slate-200 font-bold text-slate-800">
+                <td className="px-4 py-2.5 sticky left-0 bg-slate-100/80 border-r border-slate-200 z-10 text-[11px] uppercase tracking-wider">
+                  Flujo Neto Mensual
                 </td>
-                {renderTotalCells(flujoCaja, true)}
+                {MONTHS.map((_, idx) => {
+                  const neto = flujoNetoMensual[idx];
+                  return (
+                    <td 
+                      key={idx} 
+                      className={`px-3 py-2.5 text-right border-l border-slate-200 font-extrabold
+                        ${neto > 0 ? 'text-emerald-600 bg-emerald-50/20' : neto < 0 ? 'text-rose-600 bg-rose-50/20' : 'text-slate-500'}`}
+                    >
+                      ${fmt(neto)}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              {/* SALDO FINAL ACUMULADO */}
+              <tr className="bg-indigo-50/40 border-y border-indigo-100 font-extrabold text-indigo-950">
+                <td className="px-4 py-3 sticky left-0 bg-indigo-50 border-r border-indigo-200 z-10 text-sm">
+                  Saldo Final Acumulado
+                </td>
+                {MONTHS.map((_, idx) => {
+                  const saldoFinal = saldosFinales[idx];
+                  return (
+                    <td 
+                      key={idx} 
+                      className={`px-3 py-3 text-right border-l border-indigo-100 text-sm font-black bg-indigo-50/50
+                        ${saldoFinal >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}
+                    >
+                      ${fmt(saldoFinal)}
+                    </td>
+                  );
+                })}
               </tr>
 
             </tbody>
