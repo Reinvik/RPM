@@ -115,17 +115,36 @@ export const useNexusRPM = () => {
           ticketsMes.forEach(t => {
             if (t.services && Array.isArray(t.services)) {
               t.services.forEach(item => {
-                if (item.type !== 'product') {
-                  variableCosts += (Number(item.costo || item.price || item.total || 0) * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                const precio = Number(item.costo || item.price || item.total || 0);
+                const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                const monto = precio * cant;
+                const isProduct = item.type === 'product';
+                if (!isProduct) {
+                  variableCosts += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                } else if (mech.porcentaje_comision_insumos > 0) {
+                  variableCosts += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
                 }
               });
             }
             if (t.spare_parts && Array.isArray(t.spare_parts)) {
               t.spare_parts.forEach(item => {
-                if (item.type === 'service') {
-                  variableCosts += (Number(item.costo || item.price || item.total || 0) * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                const precio = Number(item.costo || item.price || item.total || 0);
+                const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                const monto = precio * cant;
+                
+                let isService = item.type === 'service';
+                if (!item.type) {
+                  const partId = String(item.part_id || '');
+                  const desc = String(item.descripcion || item.description || '');
+                  if (partId.toUpperCase().startsWith('S') || desc.toLowerCase().includes('servicio')) {
+                    isService = true;
+                  }
+                }
+
+                if (isService) {
+                  variableCosts += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
                 } else if (mech.porcentaje_comision_insumos > 0) {
-                  variableCosts += (Number(item.costo || item.price || item.total || 0) * (Number(mech.porcentaje_comision_insumos || 0) / 100));
+                  variableCosts += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
                 }
               });
             }
@@ -240,18 +259,37 @@ export const useNexusRPM = () => {
               // MO
               if (t.services && Array.isArray(t.services)) {
                 t.services.forEach(item => {
-                  if (item.type !== 'product') {
-                    totalSueldosMes += (Number(item.costo || item.price || item.total || 0) * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                  const precio = Number(item.costo || item.price || item.total || 0);
+                  const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                  const monto = precio * cant;
+                  const isProduct = item.type === 'product';
+                  if (!isProduct) {
+                    totalSueldosMes += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                  } else if (mech.porcentaje_comision_insumos > 0) {
+                    totalSueldosMes += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
                   }
                 });
               }
               // Insumos
               if (t.spare_parts && Array.isArray(t.spare_parts)) {
                 t.spare_parts.forEach(item => {
-                  if (item.type === 'service') {
-                    totalSueldosMes += (Number(item.costo || item.price || item.total || 0) * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                  const precio = Number(item.costo || item.price || item.total || 0);
+                  const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                  const monto = precio * cant;
+                  
+                  let isService = item.type === 'service';
+                  if (!item.type) {
+                    const partId = String(item.part_id || '');
+                    const desc = String(item.descripcion || item.description || '');
+                    if (partId.toUpperCase().startsWith('S') || desc.toLowerCase().includes('servicio')) {
+                      isService = true;
+                    }
+                  }
+
+                  if (isService) {
+                    totalSueldosMes += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
                   } else if (mech.porcentaje_comision_insumos > 0) {
-                    totalSueldosMes += (Number(item.costo || item.price || item.total || 0) * (Number(mech.porcentaje_comision_insumos || 0) / 100));
+                    totalSueldosMes += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
                   }
                 });
               }
@@ -283,8 +321,11 @@ export const useNexusRPM = () => {
             // Procesar arreglo de servicios
             if (t.services && Array.isArray(t.services)) {
               t.services.forEach(item => {
-                const monto = Number(item.costo || item.price || item.total || 0);
-                if (item.type === 'product') {
+                const precio = Number(item.costo || item.price || item.total || 0);
+                const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                const monto = precio * cant;
+                const isProduct = item.type === 'product';
+                if (isProduct) {
                   insumos_generados += monto;
                 } else {
                   mo_generada += monto;
@@ -294,8 +335,20 @@ export const useNexusRPM = () => {
             // Procesar arreglo de repuestos
             if (t.spare_parts && Array.isArray(t.spare_parts)) {
               t.spare_parts.forEach(item => {
-                const monto = Number(item.costo || item.price || item.total || 0);
-                if (item.type === 'service') {
+                const precio = Number(item.costo || item.price || item.total || 0);
+                const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                const monto = precio * cant;
+                
+                let isService = item.type === 'service';
+                if (!item.type) {
+                  const partId = String(item.part_id || '');
+                  const desc = String(item.descripcion || item.description || '');
+                  if (partId.toUpperCase().startsWith('S') || desc.toLowerCase().includes('servicio')) {
+                    isService = true;
+                  }
+                }
+
+                if (isService) {
                   mo_generada += monto;
                 } else {
                   insumos_generados += monto;
