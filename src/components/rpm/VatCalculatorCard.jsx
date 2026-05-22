@@ -32,7 +32,7 @@ export default function VatCalculatorCard({ salesTotal, gastosConIva }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         
         {/* IVA DÉBITO (VENTAS) */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all hover:bg-slate-100/50">
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all hover:bg-slate-100 hover:shadow-sm">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Débito Fiscal</span>
             <span className="p-1 rounded-lg bg-blue-50 text-blue-600">
@@ -48,7 +48,7 @@ export default function VatCalculatorCard({ salesTotal, gastosConIva }) {
               <span>Monto Neto (Base):</span>
               <span>${fmt(netoVentas)}</span>
             </div>
-            <div className="flex justify-between pt-1 border-t border-slate-200/50 font-bold text-slate-800 text-sm">
+            <div className="flex justify-between pt-1 border-t border-slate-200 font-bold text-slate-800 text-sm">
               <span>IVA Débito (19%):</span>
               <span className="text-blue-600">${fmt(ivaDebito)}</span>
             </div>
@@ -56,7 +56,7 @@ export default function VatCalculatorCard({ salesTotal, gastosConIva }) {
         </div>
 
         {/* IVA CRÉDITO (COMPRAS) */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all hover:bg-slate-100/50">
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 transition-all hover:bg-slate-100 hover:shadow-sm">
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Crédito Fiscal</span>
             <span className="p-1 rounded-lg bg-emerald-50 text-emerald-600">
@@ -72,7 +72,7 @@ export default function VatCalculatorCard({ salesTotal, gastosConIva }) {
               <span>Monto Neto (Base):</span>
               <span>${fmt(netoGastos)}</span>
             </div>
-            <div className="flex justify-between pt-1 border-t border-slate-200/50 font-bold text-slate-800 text-sm">
+            <div className="flex justify-between pt-1 border-t border-slate-200 font-bold text-slate-800 text-sm">
               <span>IVA Crédito (19%):</span>
               <span className="text-emerald-600">${fmt(ivaCredito)}</span>
             </div>
@@ -84,8 +84,8 @@ export default function VatCalculatorCard({ salesTotal, gastosConIva }) {
       {/* RESULTADO FINAL */}
       <div className={`rounded-xl p-4 border transition-all duration-300 ${
         esRemanente 
-          ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950' 
-          : 'bg-rose-50/70 border-rose-200 text-rose-950'
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-950' 
+          : 'bg-rose-50 border-rose-200 text-rose-950'
       }`}>
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
           <div>

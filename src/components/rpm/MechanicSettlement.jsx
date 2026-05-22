@@ -114,56 +114,103 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
       const workshopAddress = settings?.address || 'Dirección no especificada';
       const logoUrl = settings?.logo_url;
       
-      // Add Logo
+      // --- DISEÑO DE CABECERA PREMIUM ---
+      let employerStartX = 15;
+      
+      // Dibujar logo si existe
       if (logoUrl) {
         try {
           const img = new Image();
           img.src = logoUrl;
           await new Promise((resolve) => { img.onload = resolve; });
-          doc.addImage(img, 'PNG', 10, 10, 30, 30);
+          doc.addImage(img, 'PNG', 15, 12, 22, 22);
+          employerStartX = 42; // Movemos los datos de la empresa a la derecha del logo
         } catch (e) {
           console.error("Error loading logo", e);
         }
       }
-      
-      // Header Employer Box
-      doc.setDrawColor(200, 200, 200);
-      doc.setFillColor(245, 247, 250);
-      doc.roundedRect(10, 10, 80, 25, 3, 3, 'FD');
-      
-      doc.setFontSize(10);
-      doc.setTextColor(15, 23, 42);
+
+      // Datos del Empleador (Sin bordes rígidos, estilo premium limpio)
+      doc.setTextColor(15, 23, 42); // slate-900
       doc.setFont("helvetica", "bold");
-      doc.text(workshopName, 15, 18);
+      doc.setFontSize(11);
+      doc.text(workshopName, employerStartX, 17);
+      
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.text(`RUT: 12.345.678-9`, 15, 24); // Placeholder RUT for employer
-      doc.text(workshopAddress, 15, 30);
-      
-      // Header Title Box
-      doc.setFillColor(219, 234, 254); // blue-100
-      doc.roundedRect(120, 10, 80, 25, 3, 3, 'FD');
-      doc.setFontSize(12);
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text(`RUT: 12.345.678-9`, employerStartX, 23);
+      doc.text(workshopAddress, employerStartX, 28);
+
+      // Título y detalles a la derecha
+      doc.setTextColor(29, 78, 216); // blue-700
       doc.setFont("helvetica", "bold");
-      doc.text('Liquidación de', 140, 20);
-      doc.text('Remuneraciones', 140, 26);
+      doc.setFontSize(13);
+      doc.text("LIQUIDACIÓN DE REMUNERACIONES", 110, 18);
       
-      // Employee Info Box
-      doc.setDrawColor(15, 23, 42);
-      doc.rect(10, 45, 190, 30);
-      
+      doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.text(`Nombre: ${mech.name}`, 15, 52);
-      doc.text(`RUT: ${mech.rut || 'No especificado'}`, 120, 52);
-      doc.text(`Cargo: ${mech.cargo || 'Mecánico'}`, 15, 60);
-      doc.text(`Fecha de ingreso: ${mech.fecha_ingreso ? new Date(mech.fecha_ingreso).toLocaleDateString('es-CL') : 'No especificada'}`, 120, 60);
-      doc.text(`Días trabajados: ${mech.asistencia || 0}`, 15, 68);
-      
-      // Table Data
+      doc.setTextColor(100, 116, 139); // slate-500
+      const currentMonthYear = new Date().toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+      const capitalMonthYear = currentMonthYear.charAt(0).toUpperCase() + currentMonthYear.slice(1);
+      doc.text(`Período: ${capitalMonthYear}`, 110, 24);
+      doc.text(`Fecha Emisión: ${new Date().toLocaleDateString('es-CL')}`, 110, 29);
+
+      // Línea divisoria decorativa
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.setLineWidth(0.5);
+      doc.line(10, 38, 200, 38);
+
+      // --- DATOS DEL COLABORADOR ---
+      // Panel con fondo suave y bordes finos
+      doc.setFillColor(248, 250, 252); // slate-50
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.setLineWidth(0.5);
+      doc.roundedRect(10, 43, 190, 28, 2, 2, 'FD'); // Caja con fondo y borde
+
+      doc.setFontSize(9);
+      doc.setTextColor(51, 65, 85); // slate-700
+
+      const currentCargo = mech.cargo || 'Mecánico';
+      const joinDate = mech.fecha_ingreso ? new Date(mech.fecha_ingreso).toLocaleDateString('es-CL') : 'No especificada';
+
+      // Columna 1 de datos
+      doc.setFont("helvetica", "bold");
+      doc.text("Colaborador:", 15, 50);
+      doc.setFont("helvetica", "normal");
+      doc.text(mech.name, 40, 50);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Cargo:", 15, 57);
+      doc.setFont("helvetica", "normal");
+      doc.text(currentCargo, 40, 57);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Días Trab.:", 15, 64);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${mech.asistencia || 0} días`, 40, 64);
+
+      // Columna 2 de datos
+      doc.setFont("helvetica", "bold");
+      doc.text("RUT Colaborador:", 115, 50);
+      doc.setFont("helvetica", "normal");
+      doc.text(mech.rut || 'No especificado', 148, 50);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Fecha Ingreso:", 115, 57);
+      doc.setFont("helvetica", "normal");
+      doc.text(joinDate, 148, 57);
+
+      doc.setFont("helvetica", "bold");
+      doc.text("Tipo Contrato:", 115, 64);
+      doc.setFont("helvetica", "normal");
+      doc.text((mech.tipo || 'Fijo') === 'Fijo' ? 'Sueldo Fijo' : 'Sueldo Variable / Comisión', 148, 64);
+
+      // --- TABLA DE DETALLES (HABERES Y DESCUENTOS) ---
       const comisionMO = mech.mo_generada * (mech.porcentaje_comision_mo / 100);
       const comisionInsumos = (mech.insumos_generados || 0) * (mech.porcentaje_comision_insumos / 100);
       
-      // Legal Discounts
+      // Descuentos Legales
       const afp = mech.sueldo_base * 0.1145; // 11.45%
       const fonasa = mech.sueldo_base * 0.07; // 7%
       const seguroCesantia = mech.sueldo_base * 0.006; // 0.6%
@@ -194,35 +241,81 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
       ];
       
       autoTable(doc, {
-        startY: 80,
+        startY: 77,
         head: [tableData[0]],
         body: tableData.slice(1),
-        theme: 'grid',
-        headStyles: { fillColor: [15, 23, 42] }, // slate-900
-        styles: { fontSize: 9 },
+        theme: 'plain',
+        headStyles: { 
+          fillColor: [30, 41, 59], // Slate 800
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9.5
+        },
+        styles: { 
+          fontSize: 8.5,
+          textColor: [51, 65, 85], // Slate 700
+          lineColor: [226, 232, 240], // Slate 200
+          lineWidth: 0.5
+        },
+        columnStyles: {
+          0: { halign: 'left' },
+          1: { halign: 'right' },
+          2: { halign: 'right' }
+        },
         didParseCell: function (data) {
-          if (data.cell.text[0] === 'HABERES' || data.cell.text[0] === 'DESCUENTOS LEGALES' || data.cell.text[0] === 'OTROS DESCUENTOS' || data.cell.text[0] === 'TOTALES') {
+          const rowText = data.row.cells[0].text[0];
+          // Si es título de sección
+          if (rowText === 'HABERES' || rowText === 'DESCUENTOS LEGALES' || rowText === 'OTROS DESCUENTOS') {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [245, 247, 250];
+            data.cell.styles.fillColor = [241, 245, 249]; // Slate 100
+            data.cell.styles.textColor = [15, 23, 42]; // Slate 900
+          }
+          // Si es la fila de totales
+          if (rowText === 'TOTALES') {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [226, 232, 240]; // Slate 200
+            data.cell.styles.textColor = [15, 23, 42]; // Slate 900
           }
         }
       });
       
-      // Liquido a Pagar
-      const finalY = doc.lastAutoTable.finalY + 5;
-      doc.rect(10, finalY, 190, 10);
-      doc.setFontSize(10);
+      // --- LÍQUIDO A PAGAR DESTACADO ---
+      const finalY = doc.lastAutoTable.finalY + 6;
+      doc.setFillColor(236, 253, 245); // emerald-50
+      doc.setDrawColor(167, 243, 208); // emerald-200
+      doc.setLineWidth(0.5);
+      doc.roundedRect(10, finalY, 190, 12, 1.5, 1.5, 'FD');
+
+      doc.setFontSize(10.5);
       doc.setFont("helvetica", "bold");
-      doc.text(`Líquido a pagar:`, 15, finalY + 7);
-      doc.text(`$${Math.round(liquidoAPagar).toLocaleString('es-CL')}`, 150, finalY + 7);
+      doc.setTextColor(6, 78, 59); // emerald-800
+      doc.text(`LÍQUIDO A PAGAR:`, 15, finalY + 8);
       
-      // Signatures
-      const sigY = finalY + 30;
-      doc.line(20, sigY, 80, sigY);
-      doc.text('Firma Empleador', 35, sigY + 5);
+      doc.setFontSize(12);
+      doc.setTextColor(4, 120, 87); // emerald-700
+      const formattedLiquido = `$${Math.round(liquidoAPagar).toLocaleString('es-CL')}`;
+      doc.text(formattedLiquido, 195 - doc.getTextWidth(formattedLiquido), finalY + 8.5);
       
-      doc.line(120, sigY, 180, sigY);
-      doc.text('Firma Colaborador', 135, sigY + 5);
+      // --- SECCIÓN DE FIRMAS ---
+      const sigY = finalY + 32;
+      doc.setDrawColor(148, 163, 184); // slate-400
+      doc.setLineWidth(0.5);
+      
+      // Firma Empleador
+      doc.line(25, sigY, 85, sigY);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139); // slate-500
+      doc.text('Firma Empleador / Taller', 38, sigY + 5);
+      
+      // Firma Colaborador
+      doc.line(125, sigY, 185, sigY);
+      doc.text('Firma Colaborador', 142, sigY + 5);
+      
+      // Recibo de conformidad sutil
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text('Declaro recibir a mi entera conformidad el saldo líquido indicado en este documento.', 45, sigY + 16);
       
       // Registrar el gasto en Supabase
       const { error: expenseError } = await supabase

@@ -32,11 +32,11 @@ export default function ExpenseEntryModal({ isOpen, onClose, onSave }) {
             
             {/* Tipo (Radio Buttons rápidos) */}
             <div className="flex gap-4">
-              <label className={`flex-1 p-3 rounded-lg border cursor-pointer text-center transition-all ${formData.tipo === 'Fijo' ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
+              <label className={`flex-1 p-3 rounded-lg border cursor-pointer text-center transition-all ${formData.tipo === 'Fijo' ? 'bg-blue-950 border-blue-500 text-blue-450 font-bold' : 'border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
                 <input type="radio" name="tipo" value="Fijo" className="hidden" checked={formData.tipo === 'Fijo'} onChange={(e) => setFormData({...formData, tipo: e.target.value})} />
                 Gasto Fijo
               </label>
-              <label className={`flex-1 p-3 rounded-lg border cursor-pointer text-center transition-all ${formData.tipo === 'Variable' ? 'bg-purple-600/20 border-purple-500 text-purple-400' : 'border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
+              <label className={`flex-1 p-3 rounded-lg border cursor-pointer text-center transition-all ${formData.tipo === 'Variable' ? 'bg-purple-950 border-purple-500 text-purple-450 font-bold' : 'border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
                 <input type="radio" name="tipo" value="Variable" className="hidden" checked={formData.tipo === 'Variable'} onChange={(e) => setFormData({...formData, tipo: e.target.value})} />
                 Gasto Variable
               </label>
@@ -67,7 +67,7 @@ export default function ExpenseEntryModal({ isOpen, onClose, onSave }) {
             </div>
 
             {/* Toggle IVA */}
-            <label className="flex items-center gap-3 p-4 bg-slate-900/50 rounded-lg border border-slate-700/50 cursor-pointer mt-2">
+            <label className="flex items-center gap-3 p-4 bg-slate-900 rounded-lg border border-slate-700 cursor-pointer mt-2">
               <input 
                 type="checkbox" 
                 className="w-5 h-5 rounded border-slate-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-slate-900 bg-slate-800"

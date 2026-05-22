@@ -9,23 +9,27 @@ export default function BreakEvenCard({ salesTotal, fixedCosts, variableCosts })
 
   return (
     <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden">
-      <div className="absolute top-0 right-0 p-4 opacity-5 text-slate-900">
-        <Target size={100} />
+      {/* Icono decorativo al fondo con opacidad suave y pointer-events-none */}
+      <div className="absolute -top-2 -right-2 text-slate-100 pointer-events-none select-none z-0">
+        <Target size={120} />
       </div>
       
-      <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-        <Target size={20} className="text-blue-600" />
-        Punto de Equilibrio
-      </h3>
-      
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div>
-          <p className="text-sm text-slate-500 font-medium">Ingresos Actuales</p>
-          <p className="text-2xl font-bold text-slate-900">${salesTotal.toLocaleString('es-CL')}</p>
-        </div>
-        <div>
-          <p className="text-sm text-slate-500 font-medium">Meta (Costos Totales)</p>
-          <p className="text-2xl font-bold text-slate-700">${totalCosts.toLocaleString('es-CL')}</p>
+      <div className="relative z-10">
+        <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+          <Target size={20} className="text-blue-600" />
+          Punto de Equilibrio
+        </h3>
+        
+        {/* Distribución flexible para evitar recortes en pantallas pequeñas */}
+        <div className="flex flex-wrap gap-x-6 gap-y-4 mb-6">
+          <div className="flex-1 min-w-[130px]">
+            <p className="text-sm text-slate-500 font-medium">Ingresos Actuales</p>
+            <p className="text-2xl font-bold text-slate-900">${salesTotal.toLocaleString('es-CL')}</p>
+          </div>
+          <div className="flex-1 min-w-[130px]">
+            <p className="text-sm text-slate-500 font-medium">Meta (Costos Totales)</p>
+            <p className="text-2xl font-bold text-slate-700">${totalCosts.toLocaleString('es-CL')}</p>
+          </div>
         </div>
       </div>
 
