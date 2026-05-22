@@ -1,8 +1,8 @@
 import React from 'react';
-import { LayoutDashboard, Users, LogOut, Settings, BarChart3, DollarSign, FileText, Gauge, Calculator } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Settings, BarChart3, DollarSign, FileText, Gauge, Calculator, X } from 'lucide-react';
 import { useNexusContext } from '../../context/NexusContext';
 
-export default function Sidebar({ currentView, setCurrentView }) {
+export default function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }) {
   const { userRole, handleLogout, companyName } = useNexusContext();
 
   const isSuperAdmin = userRole === 'superadmin' || userRole === 'NexusOwner';
@@ -22,9 +22,19 @@ export default function Sidebar({ currentView, setCurrentView }) {
 
   return (
     <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div
+          onClick={() => setIsOpen(false)}
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+        />
+      )}
+
       <aside
         className={`
-          w-72 bg-[#050B14] text-slate-300 flex flex-col h-screen border-r border-[#1E293B] shadow-2xl relative
+          fixed inset-y-0 left-0 z-50 w-72 bg-[#050B14] text-slate-300 flex flex-col h-screen border-r border-[#1E293B] shadow-2xl transition-transform duration-300 ease-in-out
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:relative lg:translate-x-0
         `}
       >
         {/* Background Effects */}
@@ -34,7 +44,7 @@ export default function Sidebar({ currentView, setCurrentView }) {
         </div>
 
         {/* Header / Logo */}
-        <div className="h-24 flex items-center justify-between px-8 border-b border-[#1E293B] relative z-10 bg-[#050B14]/50 backdrop-blur-md">
+        <div className="h-24 flex items-center justify-between px-6 lg:px-8 border-b border-[#1E293B] relative z-10 bg-[#050B14]/50 backdrop-blur-md">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="absolute inset-0 bg-cyan-500 blur-md opacity-30 rounded-full"></div>
@@ -45,6 +55,13 @@ export default function Sidebar({ currentView, setCurrentView }) {
               <span className="text-[10px] font-bold text-cyan-400/60 tracking-[0.2em] uppercase mt-1">by SmartLean</span>
             </div>
           </div>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="p-2 -mr-2 text-slate-400 hover:text-white rounded-lg lg:hidden transition-colors"
+            aria-label="Cerrar menú"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {/* Navigation */}
@@ -56,7 +73,10 @@ export default function Sidebar({ currentView, setCurrentView }) {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setCurrentView(item.id)}
+                  onClick={() => {
+                    setCurrentView(item.id);
+                    setIsOpen(false);
+                  }}
                   className={`
                     w-full relative group flex items-center px-4 py-3.5 text-sm font-medium rounded-xl transition-all duration-300
                     ${isActive
