@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle, Edit2, Save, X, FileText, Calendar, CreditCard, Briefcase } from 'lucide-react';
+import { CheckCircle, Edit2, Save, X, FileText, Calendar, CreditCard, Briefcase, Repeat } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNexusContext } from '../../context/NexusContext';
 import jsPDF from 'jspdf';
@@ -20,7 +20,8 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
     fecha_ingreso: '',
     rut: '',
     cargo: '',
-    bonos: 0
+    bonos: 0,
+    tipo: 'Fijo'
   });
   const [isSaving, setIsSaving] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(null);
@@ -46,7 +47,8 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
       fecha_ingreso: mech.fecha_ingreso || '',
       rut: mech.rut || '',
       cargo: mech.cargo || '',
-      bonos: mech.bonos || 0
+      bonos: mech.bonos || 0,
+      tipo: mech.tipo || 'Fijo'
     });
   };
 
@@ -72,7 +74,8 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
           fecha_ingreso: editValues.fecha_ingreso || null,
           rut: editValues.rut || null,
           cargo: editValues.cargo || null,
-          bonos: Number(editValues.bonos)
+          bonos: Number(editValues.bonos),
+          tipo: editValues.tipo
         })
         .eq('id', mechId)
         .select();
@@ -227,7 +230,7 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
         .from('financial_expenses')
         .insert({
           company_id: companyId,
-          tipo: 'Variable', // Registramos como variable para que aplique solo al mes liquidado y no se repita
+          tipo: mech.tipo || 'Fijo',
           categoria: 'Pago Sueldos',
           monto: Math.round(liquidoAPagar),
           fecha: new Date().toISOString().split('T')[0],
@@ -238,7 +241,8 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
         console.error("Error al registrar egreso de sueldo:", expenseError);
         alert("Advertencia: Se generó el PDF pero no se pudo registrar el gasto automático: " + expenseError.message);
       } else {
-        alert(`✅ Liquidación aprobada y egreso de sueldo registrado por $${Math.round(liquidoAPagar).toLocaleString('es-CL')}`);
+        const tipoMsg = (mech.tipo || 'Fijo') === 'Fijo' ? 'egreso fijo recurrente' : 'egreso variable';
+        alert(`✅ Liquidación aprobada y ${tipoMsg} de sueldo registrado por $${Math.round(liquidoAPagar).toLocaleString('es-CL')}`);
         if (onUpdate) onUpdate();
       }
 
@@ -252,289 +256,391 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase tracking-wider">
-              <th className="p-4 font-bold">Mecánico</th>
-              <th className="p-4 font-bold">Días Trab.</th>
-              <th className="p-4 font-bold">Vacaciones</th>
-              <th className="p-4 font-bold min-w-[120px]">Sueldo Base</th>
-              <th className="p-4 font-bold">Comisiones</th>
-              <th className="p-4 font-bold min-w-[120px]">Bonos</th>
-              <th className="p-4 font-bold min-w-[120px]">Dctos. Legales</th>
-              <th className="p-4 font-bold min-w-[120px]">Préstamos</th>
-              <th className="p-4 font-bold">Total Líquido</th>
-              <th className="p-4 font-bold text-right">Acción</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {data.map((mech) => {
-              const isEditing = editingId === mech.id;
-              
-              const currentSueldo = isEditing ? Number(editValues.sueldo_base) : mech.sueldo_base;
-              const currentPorcMO = isEditing ? Number(editValues.porcentaje_comision_mo) : mech.porcentaje_comision_mo;
-              const currentPorcInsumos = isEditing ? Number(editValues.porcentaje_comision_insumos) : (mech.porcentaje_comision_insumos || 0);
-              const currentPrestamos = isEditing ? Number(editValues.prestamos) : (mech.prestamos || 0);
-              const currentDescuentos = isEditing ? Number(editValues.descuentos) : (mech.descuentos || 0);
-              const currentAsistencia = isEditing ? Number(editValues.asistencia) : (mech.asistencia || 0);
-              const currentVacaciones = isEditing ? Number(editValues.vacaciones_acumuladas) : (mech.vacaciones_acumuladas || 0);
-              const currentVacacionesTomadas = isEditing ? Number(editValues.vacaciones_tomadas) : (mech.vacaciones_tomadas || 0);
-              const currentFechaIngreso = isEditing ? editValues.fecha_ingreso : (mech.fecha_ingreso || '');
-              const currentRut = isEditing ? editValues.rut : (mech.rut || '');
-              const currentCargo = isEditing ? editValues.cargo : (mech.cargo || '');
-              const currentBonos = isEditing ? Number(editValues.bonos) : (mech.bonos || 0);
-              
-              const comisionMO = mech.mo_generada * (currentPorcMO / 100);
-              const comisionInsumos = (mech.insumos_generados || 0) * (currentPorcInsumos / 100);
-              
-              // Calculate legal discounts
-              const afp = currentSueldo * 0.1145;
-              const fonasa = currentSueldo * 0.07;
-              const seguroCesantia = currentSueldo * 0.006;
-              const totalDescuentosLegales = afp + fonasa + seguroCesantia;
-              
-              const total = currentSueldo + comisionMO + comisionInsumos + currentBonos - totalDescuentosLegales - currentPrestamos - currentDescuentos;
-              const isApproved = mech.status === 'approved';
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      {data.map((mech) => {
+        const isEditing = editingId === mech.id;
+        
+        const currentSueldo = isEditing ? Number(editValues.sueldo_base) : mech.sueldo_base;
+        const currentPorcMO = isEditing ? Number(editValues.porcentaje_comision_mo) : mech.porcentaje_comision_mo;
+        const currentPorcInsumos = isEditing ? Number(editValues.porcentaje_comision_insumos) : (mech.porcentaje_comision_insumos || 0);
+        const currentPrestamos = isEditing ? Number(editValues.prestamos) : (mech.prestamos || 0);
+        const currentDescuentos = isEditing ? Number(editValues.descuentos) : (mech.descuentos || 0);
+        const currentAsistencia = isEditing ? Number(editValues.asistencia) : (mech.asistencia || 0);
+        const currentVacaciones = isEditing ? Number(editValues.vacaciones_acumuladas) : (mech.vacaciones_acumuladas || 0);
+        const currentVacacionesTomadas = isEditing ? Number(editValues.vacaciones_tomadas) : (mech.vacaciones_tomadas || 0);
+        const currentFechaIngreso = isEditing ? editValues.fecha_ingreso : (mech.fecha_ingreso || '');
+        const currentRut = isEditing ? editValues.rut : (mech.rut || '');
+        const currentCargo = isEditing ? editValues.cargo : (mech.cargo || '');
+        const currentBonos = isEditing ? Number(editValues.bonos) : (mech.bonos || 0);
+        
+        const comisionMO = mech.mo_generada * (currentPorcMO / 100);
+        const comisionInsumos = (mech.insumos_generados || 0) * (currentPorcInsumos / 100);
+        
+        // Calcular descuentos legales
+        const afp = currentSueldo * 0.1145;
+        const fonasa = currentSueldo * 0.07;
+        const seguroCesantia = currentSueldo * 0.006;
+        const totalDescuentosLegales = afp + fonasa + seguroCesantia;
+        
+        const totalHaberes = currentSueldo + comisionMO + comisionInsumos + currentBonos;
+        const totalDescuentos = totalDescuentosLegales + currentPrestamos + currentDescuentos;
+        const total = totalHaberes - totalDescuentos;
+        const isApproved = mech.status === 'approved';
 
-              return (
-                <tr key={mech.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4 font-semibold text-slate-900">
-                    <div className="flex items-center gap-2">
-                      {mech.name}
-                      {!isEditing && (
-                        <button onClick={() => handleEditClick(mech)} className="text-slate-400 hover:text-blue-600 p-1">
-                          <Edit2 size={14} />
-                        </button>
-                      )}
+        const initials = mech.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+        return (
+          <div key={mech.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col justify-between">
+            {/* Si está editando */}
+            {isEditing ? (
+              <div className="p-6 space-y-4 text-xs">
+                <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
+                    {initials}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm">{mech.name}</h3>
+                    <span className="text-[10px] text-slate-400">Editando Ficha de Colaborador</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">RUT</label>
+                    <input 
+                      type="text" 
+                      placeholder="RUT"
+                      value={editValues.rut}
+                      onChange={(e) => setEditValues({...editValues, rut: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Cargo</label>
+                    <input 
+                      type="text" 
+                      placeholder="Cargo"
+                      value={editValues.cargo}
+                      onChange={(e) => setEditValues({...editValues, cargo: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Fecha Ingreso</label>
+                    <input 
+                      type="date" 
+                      value={editValues.fecha_ingreso}
+                      onChange={(e) => setEditValues({...editValues, fecha_ingreso: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Tipo de Remuneración</label>
+                    <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setEditValues({...editValues, tipo: 'Fijo'})}
+                        className={`flex-1 py-1 text-[9px] font-bold rounded transition-all ${
+                          editValues.tipo === 'Fijo' 
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Fija
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditValues({...editValues, tipo: 'Variable'})}
+                        className={`flex-1 py-1 text-[9px] font-bold rounded transition-all ${
+                          editValues.tipo === 'Variable' 
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Variable
+                      </button>
                     </div>
-                    <div className="text-xs text-slate-400 mt-0.5 flex flex-col gap-0.5">
-                      <div className="flex items-center gap-1">
-                        <CreditCard size={12} />
-                        {isEditing ? (
-                          <input 
-                            type="text" 
-                            placeholder="RUT"
-                            value={editValues.rut}
-                            onChange={(e) => setEditValues({...editValues, rut: e.target.value})}
-                            className="bg-slate-50 border border-slate-200 rounded p-0.5 text-xs text-slate-700 w-24"
-                          />
-                        ) : (
-                          currentRut || 'Sin RUT'
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Briefcase size={12} />
-                        {isEditing ? (
-                          <input 
-                            type="text" 
-                            placeholder="Cargo"
-                            value={editValues.cargo}
-                            onChange={(e) => setEditValues({...editValues, cargo: e.target.value})}
-                            className="bg-slate-50 border border-slate-200 rounded p-0.5 text-xs text-slate-700 w-24"
-                          />
-                        ) : (
-                          currentCargo || 'Mecánico'
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Calendar size={12} />
-                        {isEditing ? (
-                          <input 
-                            type="date" 
-                            value={editValues.fecha_ingreso}
-                            onChange={(e) => setEditValues({...editValues, fecha_ingreso: e.target.value})}
-                            className="bg-slate-50 border border-slate-200 rounded p-0.5 text-xs text-slate-700"
-                          />
-                        ) : (
-                          currentFechaIngreso ? `Ingreso: ${new Date(currentFechaIngreso).toLocaleDateString('es-CL')}` : 'Sin fecha ingreso'
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  
-                  {/* Días Trabajados */}
-                  <td className="p-4 text-slate-600 text-sm">
-                    {isEditing ? (
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Días Trabajados</label>
+                    <input 
+                      type="number" 
+                      value={editValues.asistencia}
+                      onChange={(e) => setEditValues({...editValues, asistencia: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Vac. Acumuladas</label>
+                    <input 
+                      type="number" 
+                      value={editValues.vacaciones_acumuladas}
+                      onChange={(e) => setEditValues({...editValues, vacaciones_acumuladas: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Vac. Tomadas</label>
+                    <input 
+                      type="number" 
+                      value={editValues.vacaciones_tomadas}
+                      onChange={(e) => setEditValues({...editValues, vacaciones_tomadas: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-3 space-y-3">
+                  <span className="text-[10px] font-bold text-slate-800 uppercase tracking-wide block">Parámetros de Liquidación</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Sueldo Base ($)</label>
                       <input 
                         type="number" 
-                        value={editValues.asistencia}
-                        onChange={(e) => setEditValues({...editValues, asistencia: e.target.value})}
-                        className="w-16 bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                        value={editValues.sueldo_base}
+                        onChange={(e) => setEditValues({...editValues, sueldo_base: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                    ) : (
-                      `${mech.asistencia || 0} días`
-                    )}
-                  </td>
-
-                  {/* Vacaciones */}
-                  <td className="p-4 text-slate-600 text-sm">
-                    {isEditing ? (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-slate-400">Acum:</span>
-                          <input 
-                            type="number" 
-                            value={editValues.vacaciones_acumuladas}
-                            onChange={(e) => setEditValues({...editValues, vacaciones_acumuladas: e.target.value})}
-                            className="w-12 bg-slate-50 border border-slate-200 rounded p-1 text-slate-700 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                          />
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-slate-400">Tom:</span>
-                          <input 
-                            type="number" 
-                            value={editValues.vacaciones_tomadas}
-                            onChange={(e) => setEditValues({...editValues, vacaciones_tomadas: e.target.value})}
-                            className="w-12 bg-slate-50 border border-slate-200 rounded p-1 text-slate-700 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-xs">
-                        <p>Acum: {mech.vacaciones_acumuladas || 0}</p>
-                        <p>Tom: {mech.vacaciones_tomadas || 0}</p>
-                      </div>
-                    )}
-                  </td>
-
-                  {/* Sueldo Base */}
-                  <td className="p-4 text-slate-600 text-sm">
-                    {isEditing ? (
-                      <div className="flex items-center gap-1">
-                        <span className="text-slate-400">$</span>
-                        <input 
-                          type="number" 
-                          value={editValues.sueldo_base}
-                          onChange={(e) => setEditValues({...editValues, sueldo_base: e.target.value})}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    ) : (
-                      `$${mech.sueldo_base.toLocaleString('es-CL')}`
-                    )}
-                  </td>
-                  
-                  {/* Comisiones */}
-                  <td className="p-4 text-slate-600 text-sm">
-                    {isEditing ? (
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-slate-400">MO:</span>
-                          <input 
-                            type="number" 
-                            value={editValues.porcentaje_comision_mo}
-                            onChange={(e) => setEditValues({...editValues, porcentaje_comision_mo: e.target.value})}
-                            className="w-12 bg-slate-50 border border-slate-200 rounded-lg p-1 text-slate-700 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                          />
-                          <span className="text-xs text-slate-400">%</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-slate-400">Ins:</span>
-                          <input 
-                            type="number" 
-                            value={editValues.porcentaje_comision_insumos}
-                            onChange={(e) => setEditValues({...editValues, porcentaje_comision_insumos: e.target.value})}
-                            className="w-12 bg-slate-50 border border-slate-200 rounded-lg p-1 text-slate-700 text-xs outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                          />
-                          <span className="text-xs text-slate-400">%</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-xs">
-                        <p>MO: ${comisionMO.toLocaleString('es-CL')} ({mech.porcentaje_comision_mo}%)</p>
-                        <p>Ins: ${comisionInsumos.toLocaleString('es-CL')} ({mech.porcentaje_comision_insumos || 0}%)</p>
-                      </div>
-                    )}
-                  </td>
-
-                  {/* Bonos */}
-                  <td className="p-4 text-slate-600 text-sm">
-                    {isEditing ? (
-                      <div className="flex items-center gap-1">
-                        <span className="text-slate-400">$</span>
-                        <input 
-                          type="number" 
-                          value={editValues.bonos}
-                          onChange={(e) => setEditValues({...editValues, bonos: e.target.value})}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    ) : (
-                      `$${(mech.bonos || 0).toLocaleString('es-CL')}`
-                    )}
-                  </td>
-
-                  {/* Descuentos Legales */}
-                  <td className="p-4 text-slate-500 text-sm">
-                    <div className="text-xs">
-                      <p>AFP: ${Math.round(afp).toLocaleString('es-CL')}</p>
-                      <p>Fonasa: ${Math.round(fonasa).toLocaleString('es-CL')}</p>
-                      <p>Seg.C: ${Math.round(seguroCesantia).toLocaleString('es-CL')}</p>
-                      <p className="font-bold text-slate-700">Total: ${Math.round(totalDescuentosLegales).toLocaleString('es-CL')}</p>
                     </div>
-                  </td>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Bonos ($)</label>
+                      <input 
+                        type="number" 
+                        value={editValues.bonos}
+                        onChange={(e) => setEditValues({...editValues, bonos: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 block mb-1">% Comisión MO</label>
+                      <input 
+                        type="number" 
+                        value={editValues.porcentaje_comision_mo}
+                        onChange={(e) => setEditValues({...editValues, porcentaje_comision_mo: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 block mb-1">% Comisión Insumos</label>
+                      <input 
+                        type="number" 
+                        value={editValues.porcentaje_comision_insumos}
+                        onChange={(e) => setEditValues({...editValues, porcentaje_comision_insumos: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Préstamos ($)</label>
+                      <input 
+                        type="number" 
+                        value={editValues.prestamos}
+                        onChange={(e) => setEditValues({...editValues, prestamos: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Descuentos Varios ($)</label>
+                      <input 
+                        type="number" 
+                        value={editValues.descuentos}
+                        onChange={(e) => setEditValues({...editValues, descuentos: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
 
-                  {/* Préstamos */}
-                  <td className="p-4 text-slate-600 text-sm">
-                    {isEditing ? (
-                      <div className="flex items-center gap-1">
-                        <span className="text-slate-400">$</span>
-                        <input 
-                          type="number" 
-                          value={editValues.prestamos}
-                          onChange={(e) => setEditValues({...editValues, prestamos: e.target.value})}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                        />
+                <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-[11px] space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Total Haberes:</span>
+                    <span className="font-semibold text-slate-800">${Math.round(totalHaberes).toLocaleString('es-CL')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Total Descuentos:</span>
+                    <span className="font-semibold text-rose-600">-${Math.round(totalDescuentos).toLocaleString('es-CL')}</span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-slate-200 font-bold">
+                    <span className="text-slate-700">Líquido Estimado:</span>
+                    <span className="text-emerald-600">${Math.round(total).toLocaleString('es-CL')}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button 
+                    onClick={handleCancelEdit}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2.5 rounded-xl font-semibold transition-colors flex items-center justify-center gap-1 text-[11px]"
+                  >
+                    <X size={14} /> Cancelar
+                  </button>
+                  <button 
+                    onClick={() => handleSave(mech.id)}
+                    disabled={isSaving}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold transition-all shadow-sm hover:shadow flex items-center justify-center gap-1 text-[11px] disabled:opacity-50"
+                  >
+                    <Save size={14} /> Guardar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Vista de Ficha de Colaborador */
+              <>
+                <div className="p-6 space-y-4">
+                  {/* Cabecera de la Tarjeta */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-extrabold text-base flex items-center justify-center shadow-sm">
+                        {initials}
                       </div>
-                    ) : (
-                      `$${(mech.prestamos || 0).toLocaleString('es-CL')}`
-                    )}
-                  </td>
-                  
-                  <td className="p-4 font-bold text-slate-900 text-sm">${Math.round(total).toLocaleString('es-CL')}</td>
-                  
-                  <td className="p-4 text-right">
-                    {isEditing ? (
-                      <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={handleCancelEdit}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-600 p-1.5 rounded-lg transition-colors"
-                        >
-                          <X size={16} />
-                        </button>
-                        <button 
-                          onClick={() => handleSave(mech.id)}
-                          disabled={isSaving}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white p-1.5 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          <Save size={16} />
-                        </button>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <h3 className="font-extrabold text-slate-800 text-sm leading-tight">{mech.name}</h3>
+                          <button onClick={() => handleEditClick(mech)} className="text-slate-400 hover:text-blue-600 p-0.5 transition-colors">
+                            <Edit2 size={13} />
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                          <p className="text-xs font-semibold text-blue-600">{currentCargo || 'Mecánico'}</p>
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 border leading-none ${
+                            (mech.tipo || 'Fijo') === 'Fijo'
+                              ? 'bg-blue-50 text-blue-600 border-blue-200'
+                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}>
+                            {(mech.tipo || 'Fijo') === 'Fijo' ? (
+                              <>
+                                <Repeat size={8} /> Recurrente
+                              </>
+                            ) : (
+                              <>
+                                <Calendar size={8} /> Variable
+                              </>
+                            )}
+                          </span>
+                        </div>
                       </div>
-                    ) : (
-                      isApproved ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-700 text-sm font-bold bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
-                          <CheckCircle size={16} /> Aprobado
+                    </div>
+
+                    <div>
+                      {isApproved ? (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                          <CheckCircle size={12} /> Aprobado
                         </span>
                       ) : (
-                        <button 
-                          onClick={() => generatePDF(mech)}
-                          disabled={generatingPdf === mech.id}
-                          className="bg-slate-900 hover:bg-slate-800 text-white text-sm px-4 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-2 justify-end ml-auto"
-                        >
-                          <FileText size={16} />
-                          {generatingPdf === mech.id ? 'Generando...' : 'Aprobar Liquidación'}
-                        </button>
-                      )
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full flex items-center gap-1">
+                          Pendiente
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Informacion Ficha */}
+                  <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-150 text-[11px]">
+                    <div>
+                      <span className="text-slate-400 block font-bold uppercase text-[9px]">RUT</span>
+                      <span className="text-slate-700 font-bold truncate block">{currentRut || 'Sin RUT'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-bold uppercase text-[9px]">Días Trab.</span>
+                      <span className="text-slate-700 font-bold block">{currentAsistencia} días</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block font-bold uppercase text-[9px]">Vacaciones</span>
+                      <span className="text-slate-700 font-bold block">Acum: {currentVacaciones} | T: {currentVacacionesTomadas}</span>
+                    </div>
+                  </div>
+
+                  {/* Desglose Haberes / Descuentos */}
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    
+                    {/* HABERES */}
+                    <div className="space-y-2 border-r border-slate-100 pr-2">
+                      <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">Haberes</span>
+                      <div className="space-y-1.5 text-[11px] text-slate-600">
+                        <div className="flex justify-between">
+                          <span>Sueldo Base:</span>
+                          <span className="font-semibold text-slate-700">${currentSueldo.toLocaleString('es-CL')}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Comisión MO:</span>
+                          <span className="font-semibold text-slate-700">${Math.round(comisionMO).toLocaleString('es-CL')}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Comisión Ins:</span>
+                          <span className="font-semibold text-slate-700">${Math.round(comisionInsumos).toLocaleString('es-CL')}</span>
+                        </div>
+                        {currentBonos > 0 && (
+                          <div className="flex justify-between">
+                            <span>Bonos:</span>
+                            <span className="font-semibold text-emerald-600">+${currentBonos.toLocaleString('es-CL')}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between pt-1.5 border-t border-slate-100 font-bold text-slate-800">
+                          <span>T. Haberes:</span>
+                          <span>${Math.round(totalHaberes).toLocaleString('es-CL')}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* DESCUENTOS */}
+                    <div className="space-y-2 pl-1">
+                      <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Descuentos</span>
+                      <div className="space-y-1.5 text-[11px] text-slate-600">
+                        <div className="flex justify-between text-[10px] text-slate-400">
+                          <span>Leyes AFP/Salud:</span>
+                          <span>${Math.round(totalDescuentosLegales).toLocaleString('es-CL')}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Préstamos:</span>
+                          <span className="font-semibold text-slate-700">${currentPrestamos.toLocaleString('es-CL')}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Varios:</span>
+                          <span className="font-semibold text-slate-700">${currentDescuentos.toLocaleString('es-CL')}</span>
+                        </div>
+                        <div className="flex justify-between pt-1.5 border-t border-slate-100 font-bold text-slate-800">
+                          <span>T. Dctos:</span>
+                          <span className="text-rose-600">-${Math.round(totalDescuentos).toLocaleString('es-CL')}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* Footer de la tarjeta con Liquido a Pagar y Botones */}
+                <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col gap-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Líquido a Pagar</span>
+                    <span className="text-lg font-extrabold text-emerald-600">${Math.round(total).toLocaleString('es-CL')}</span>
+                  </div>
+
+                  <div>
+                    {isApproved ? (
+                      <button 
+                        onClick={() => generatePDF(mech)}
+                        disabled={generatingPdf === mech.id}
+                        className="w-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-1.5"
+                      >
+                        <FileText size={14} className="text-blue-500" />
+                        {generatingPdf === mech.id ? 'Descargando...' : 'Descargar PDF'}
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => generatePDF(mech)}
+                        disabled={generatingPdf === mech.id}
+                        className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle size={14} className="text-emerald-400" />
+                        {generatingPdf === mech.id ? 'Generando...' : 'Aprobar Liquidación'}
+                      </button>
                     )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
+

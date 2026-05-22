@@ -95,7 +95,12 @@ export const useNexusRPM = () => {
         // Sumar Sueldos al Punto de Equilibrio (Mes actual)
         const mechs = mechanicsData || [];
         mechs.forEach(mech => {
-          fixedCosts += Number(mech.sueldo_base || 0);
+          const isFixed = mech.tipo !== 'Variable'; // Por defecto es Fijo
+          if (isFixed) {
+            fixedCosts += Number(mech.sueldo_base || 0);
+          } else {
+            variableCosts += Number(mech.sueldo_base || 0);
+          }
           
           // Buscar tickets de este mes para comisiones
           const ticketsMes = (ticketSales || []).filter(t => {
@@ -287,6 +292,7 @@ export const useNexusRPM = () => {
             porcentaje_comision_insumos: Number(m.porcentaje_comision_insumos) || 0,
             mo_generada,
             insumos_generados,
+            tipo: m.tipo || 'Fijo',
             status: 'pending'
           };
         });

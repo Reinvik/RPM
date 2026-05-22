@@ -15,7 +15,8 @@ export default function PayrollModule() {
     name: '',
     sueldo_base: '',
     porcentaje_comision_mo: '',
-    porcentaje_comision_insumos: ''
+    porcentaje_comision_insumos: '',
+    tipo: 'Fijo'
   });
 
   const handleSubmit = async (e) => {
@@ -32,6 +33,7 @@ export default function PayrollModule() {
         sueldo_base: Number(formData.sueldo_base) || 0,
         porcentaje_comision_mo: Number(formData.porcentaje_comision_mo) || 0,
         porcentaje_comision_insumos: Number(formData.porcentaje_comision_insumos) || 0,
+        tipo: formData.tipo,
         is_active: true
       });
       
@@ -39,7 +41,7 @@ export default function PayrollModule() {
     
     if (!error) {
       setShowForm(false);
-      setFormData({ name: '', sueldo_base: '', porcentaje_comision_mo: '', porcentaje_comision_insumos: '' });
+      setFormData({ name: '', sueldo_base: '', porcentaje_comision_mo: '', porcentaje_comision_insumos: '', tipo: 'Fijo' });
       refetchData(); // Refrescar localmente
     } else {
       alert("Error al agregar personal: " + error.message);
@@ -72,60 +74,91 @@ export default function PayrollModule() {
 
       {/* Formulario de Registro */}
       {showForm && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-8 animate-fade-in">
-          <h2 className="text-lg font-bold text-slate-900 mb-4">Registrar Nuevo Personal</h2>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xl mb-8 transition-all duration-300 animate-fade-in relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-blue-500 to-indigo-500"></div>
+          <h2 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
+            Registrar Nuevo Personal
+          </h2>
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-5 items-end">
             
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Nombre</label>
+              <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Nombre</label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
                 placeholder="Ej: Juan Pérez"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 required
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Sueldo Base ($)</label>
+              <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Sueldo Base ($)</label>
               <input
                 type="number"
                 value={formData.sueldo_base}
                 onChange={(e) => setFormData({...formData, sueldo_base: e.target.value})}
                 placeholder="Ej: 500000"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">% Comisión MO</label>
+              <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">% Comisión MO</label>
               <input
                 type="number"
                 value={formData.porcentaje_comision_mo}
                 onChange={(e) => setFormData({...formData, porcentaje_comision_mo: e.target.value})}
                 placeholder="Ej: 30"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               />
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-500 uppercase block mb-1">% Comisión Insumos</label>
+              <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">% Comisión Insumos</label>
               <input
                 type="number"
                 value={formData.porcentaje_comision_insumos}
                 onChange={(e) => setFormData({...formData, porcentaje_comision_insumos: e.target.value})}
                 placeholder="Ej: 5"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Remuneración</label>
+              <div className="flex bg-slate-100 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, tipo: 'Fijo'})}
+                  className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${
+                    formData.tipo === 'Fijo' 
+                      ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Fija
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, tipo: 'Variable'})}
+                  className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${
+                    formData.tipo === 'Variable' 
+                      ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Variable
+                </button>
+              </div>
             </div>
 
             <div>
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white p-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white p-3 rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50"
               >
                 {saving ? 'Guardando...' : 'Guardar Personal'}
               </button>
@@ -134,8 +167,8 @@ export default function PayrollModule() {
         </div>
       )}
 
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <p className="text-slate-500 mb-6 text-sm">
+      <div className="space-y-4">
+        <p className="text-slate-500 text-sm">
           Gestión de liquidaciones, sueldos base y comisiones generadas por servicios de taller. 
           Al aprobar una liquidación, se descontará del margen operativo mensual.
         </p>
