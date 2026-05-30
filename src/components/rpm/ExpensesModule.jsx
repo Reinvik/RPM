@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   PlusCircle, 
   TrendingUp, 
@@ -16,7 +16,7 @@ import {
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
 
-const OPEX_CATEGORIES = [
+const DEFAULT_OPEX_CATEGORIES = [
   'Insumo de aseo',
   'Insumo de taller',
   'Bencina',
@@ -30,7 +30,7 @@ const OPEX_CATEGORIES = [
   'Pago Publicidad'
 ];
 
-const CAPEX_CATEGORIES = [
+const DEFAULT_CAPEX_CATEGORIES = [
   'Herramientas',
   'Maquinaria',
   'Infraestructura',
@@ -54,9 +54,29 @@ export default function ExpensesModule() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  // Clasificar según la categoría definida en las listas fijas
-  const opex = expenses.filter(e => OPEX_CATEGORIES.includes(e.categoria));
-  const capex = expenses.filter(e => CAPEX_CATEGORIES.includes(e.categoria));
+  // Estados para Categorías Personalizadas
+  const [customOpexCategories, setCustomOpexCategories] = useState([]);
+  const [customCapexCategories, setCustomCapexCategories] = useState([]);
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  // Cargar categorías personalizadas desde LocalStorage al iniciar o cambiar de empresa
+  useEffect(() => {
+    if (!companyId) return;
+    const opexKey = `nexus_rpm_custom_opex_${companyId}`;
+    const capexKey = `nexus_rpm_custom_capex_${companyId}`;
+    
+    setCustomOpexCategories(JSON.parse(localStorage.getItem(opexKey) || '[]'));
+    setCustomCapexCategories(JSON.parse(localStorage.getItem(capexKey) || '[]'));
+  }, [companyId]);
+
+  // Listas de categorías combinadas
+  const opexCategories = [...DEFAULT_OPEX_CATEGORIES, ...customOpexCategories];
+  const capexCategories = [...DEFAULT_CAPEX_CATEGORIES, ...customCapexCategories];
+
+  // Clasificar según la categoría (CAPEX explícito y OPEX por fallback resiliente)
+  const capex = expenses.filter(e => capexCategories.includes(e.categoria));
+  const opex = expenses.filter(e => !capexCategories.includes(e.categoria));
 
   // Totales de OPEX
   const totalOpex = opex.reduce((sum, e) => sum + Number(e.monto), 0);
@@ -91,12 +111,39 @@ export default function ExpensesModule() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!categoria || !monto) return;
+    
+    let finalCategoria = categoria;
+    
+    // Procesar categoría personalizada
+    if (showNewCategoryInput) {
+      if (!newCategoryName.trim()) {
+        alert("Por favor ingresa un nombre para la nueva categoría.");
+        return;
+      }
+      finalCategoria = newCategoryName.trim();
+      
+      // Guardar en el almacenamiento local y actualizar estado
+      if (clasificacion === 'OPEX') {
+        if (!opexCategories.includes(finalCategoria)) {
+          const updated = [...customOpexCategories, finalCategoria];
+          setCustomOpexCategories(updated);
+          localStorage.setItem(`nexus_rpm_custom_opex_${companyId}`, JSON.stringify(updated));
+        }
+      } else {
+        if (!capexCategories.includes(finalCategoria)) {
+          const updated = [...customCapexCategories, finalCategoria];
+          setCustomCapexCategories(updated);
+          localStorage.setItem(`nexus_rpm_custom_capex_${companyId}`, JSON.stringify(updated));
+        }
+      }
+    }
+
+    if (!finalCategoria || !monto) return;
     
     setSaving(true);
     const result = await addExpense({
       tipo: recurrencia,
-      categoria,
+      categoria: finalCategoria,
       monto: Number(monto),
       fecha,
       aplica_credito_iva: aplicaCreditoIva
@@ -106,6 +153,8 @@ export default function ExpensesModule() {
     if (!result.error) {
       setShowForm(false);
       setCategoria('');
+      setNewCategoryName('');
+      setShowNewCategoryInput(false);
       setMonto('');
       setFecha(new Date().toISOString().split('T')[0]);
       setAplicaCreditoIva(false);
@@ -156,6 +205,8 @@ export default function ExpensesModule() {
           onClick={() => {
             setShowForm(!showForm);
             setCategoria('');
+            setNewCategoryName('');
+            setShowNewCategoryInput(false);
           }}
           className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm shadow-md transition-all duration-300 ${
             showForm 
@@ -247,17 +298,49 @@ export default function ExpensesModule() {
               {/* Categoría */}
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Categoría</label>
-                <select
-                  value={categoria}
-                  onChange={(e) => setCategoria(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                  required
-                >
-                  <option value="">Selecciona una categoría</option>
-                  {(clasificacion === 'OPEX' ? OPEX_CATEGORIES : CAPEX_CATEGORIES).map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                {showNewCategoryInput ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="Ej: Arriendo, Isapre, etc."
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      required
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewCategoryInput(false);
+                        setNewCategoryName('');
+                        setCategoria('');
+                      }}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-200 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={categoria}
+                    onChange={(e) => {
+                      if (e.target.value === 'ADD_NEW') {
+                        setShowNewCategoryInput(true);
+                      } else {
+                        setCategoria(e.target.value);
+                      }
+                    }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    required
+                  >
+                    <option value="">Selecciona una categoría</option>
+                    {(clasificacion === 'OPEX' ? opexCategories : capexCategories).map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                    <option value="ADD_NEW" className="text-blue-600 font-extrabold">+ Agregar nueva categoría...</option>
+                  </select>
+                )}
               </div>
 
               {/* Monto */}
@@ -323,6 +406,8 @@ export default function ExpensesModule() {
                 onClick={() => {
                   setShowForm(false);
                   setCategoria('');
+                  setNewCategoryName('');
+                  setShowNewCategoryInput(false);
                 }}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm transition-colors"
               >
@@ -510,7 +595,7 @@ export default function ExpensesModule() {
         </div>
 
         <div className="flex items-center gap-3">
-          <p className={`font-extrabold text-sm ${OPEX_CATEGORIES.includes(exp.categoria) ? 'text-rose-500' : 'text-blue-600'}`}>
+          <p className={`font-extrabold text-sm ${opexCategories.includes(exp.categoria) ? 'text-rose-500' : 'text-blue-600'}`}>
             ${fmt(exp.monto)}
           </p>
           
