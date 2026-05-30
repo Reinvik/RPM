@@ -66,3 +66,48 @@ body {
     transform: translateY(-2px);
     box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
 }
+
+/* Custom Scrollbar Global */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.02);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Sleek Neon Cyan Scrollbar for Dark Sidebar specifically */
+aside ::-webkit-scrollbar {
+  width: 4px;
+}
+
+aside ::-webkit-scrollbar-track {
+  background: #050B14;
+}
+
+aside ::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.25); /* cyan-500 low opacity */
+  border-radius: 99px;
+  transition: all 0.3s ease;
+}
+
+aside ::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.5); /* glow on hover */
+}
+
+/* Firefox scrollbar styles */
+aside {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(6, 182, 212, 0.25) #050B14;
+}
+

@@ -10,6 +10,7 @@ const VIEW_TITLES = {
   vat: 'Cálculo de IVA Mensual',
   payroll: 'Liquidaciones & Personal',
   pricing: 'Fijación de Precios',
+  supplies: 'Rentabilidad de Insumos',
   admin: 'Panel Super Admin'
 };
 
