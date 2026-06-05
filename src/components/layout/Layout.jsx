@@ -11,6 +11,7 @@ const VIEW_TITLES = {
   payroll: 'Liquidaciones & Personal',
   pricing: 'Fijación de Precios',
   supplies: 'Rentabilidad de Insumos',
+  payable: 'Cuentas por Pagar / Proveedores',
   admin: 'Panel Super Admin'
 };
 
