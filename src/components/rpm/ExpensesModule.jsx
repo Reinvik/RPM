@@ -120,6 +120,12 @@ export default function ExpensesModule() {
         });
       } else {
         const cantidadCuotasEnteras = Math.floor(total / valorCuota);
+        
+        // Limitar a un máximo de 60 cuotas para evitar congelar el navegador por valores pequeños intermedios
+        if (cantidadCuotasEnteras > 60) {
+          return;
+        }
+
         const resto = total % valorCuota;
         
         for (let i = 0; i < cantidadCuotasEnteras; i++) {
@@ -146,20 +152,20 @@ export default function ExpensesModule() {
 
   // Manejar el cambio individual de una cuota
   const handleCuotaChange = (index, field, value) => {
-    setCuotasList(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        [field]: field === 'monto' ? Number(value) : value
-      };
-      
-      if (field === 'monto') {
-        const newTotal = updated.reduce((sum, c) => sum + Number(c.monto || 0), 0);
-        setMonto(newTotal.toString());
-      }
-      
-      return updated;
-    });
+    const updated = [...cuotasList];
+    const parsedValue = field === 'monto' ? Number(value || 0) : value;
+
+    updated[index] = {
+      ...updated[index],
+      [field]: parsedValue
+    };
+
+    setCuotasList(updated);
+
+    if (field === 'monto') {
+      const newTotal = updated.reduce((sum, c) => sum + Number(c.monto || 0), 0);
+      setMonto(newTotal.toString());
+    }
   };
 
   // Manejar inicio de la edición de un gasto
