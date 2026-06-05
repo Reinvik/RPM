@@ -11,6 +11,7 @@ export const useNexusRPM = () => {
     fixedCosts: 0,
     variableCosts: 0,
     expenses: [],
+    allExpenses: [],
     mechanics: [],
     sales: [],
     yearlyCashflow: { ingresos: { facturas: [], boletas: [] }, gastos: {} }
@@ -402,6 +403,7 @@ export const useNexusRPM = () => {
           fixedCosts,
           variableCosts,
           expenses: filteredExpenses,
+          allExpenses: expensesData || [],
           mechanics,
           sales: currentMonthSales,
           yearlyCashflow

@@ -48,7 +48,7 @@ const DEFAULT_CAPEX_CATEGORIES = [
 ];
 
 export default function PayableModule() {
-  const { data: { expenses }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
+  const { data: { allExpenses }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
   const { companyId } = useNexusContext();
 
   const [activeTab, setActiveTab] = useState('facturas'); // 'facturas' o 'proveedores'
@@ -131,7 +131,8 @@ export default function PayableModule() {
   // Cruzar egresos de Supabase con los detalles locales de facturas
   const invoices = useMemo(() => {
     const list = [];
-    expenses.forEach(exp => {
+    const expensesList = allExpenses || [];
+    expensesList.forEach(exp => {
       const detail = expenseDetails[exp.id];
       if (detail) {
         const supplier = suppliers.find(s => s.id === detail.supplierId);
@@ -148,7 +149,7 @@ export default function PayableModule() {
       }
     });
     return list.sort((a, b) => new Date(a.fechaVencimiento) - new Date(b.fechaVencimiento));
-  }, [expenses, expenseDetails, suppliers]);
+  }, [allExpenses, expenseDetails, suppliers]);
 
   // Filtrar facturas según búsqueda
   const filteredInvoices = useMemo(() => {
