@@ -473,6 +473,7 @@ export const useNexusRPM = () => {
       };
     });
 
+    setTrigger(prev => prev + 1);
     return { data: newExpense };
   };
 
@@ -508,8 +509,54 @@ export const useNexusRPM = () => {
       };
     });
 
+    setTrigger(prev => prev + 1);
     return { success: true };
   };
 
-  return { data, loading, addExpense, deleteExpense, refetchData: () => setTrigger(prev => prev + 1) };
+  const updateExpense = async (id, expenseData) => {
+    if (!companyId) return { error: 'No company ID' };
+
+    const { data: updatedExpense, error } = await supabase
+      .schema('garage')
+      .from('financial_expenses')
+      .update(expenseData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error updating expense:", error);
+      return { error };
+    }
+
+    // Actualizar estado local
+    setData(prev => {
+      const updatedExpenses = prev.expenses.map(e => e.id === id ? { ...e, ...updatedExpense } : e);
+      let fixedCosts = prev.fixedCosts;
+      let variableCosts = prev.variableCosts;
+
+      // Restar el costo viejo y sumar el nuevo para el mes seleccionado si corresponde
+      const oldExpense = prev.expenses.find(e => e.id === id);
+      if (oldExpense && oldExpense.categoria !== 'Pago Sueldos') {
+        if (oldExpense.tipo === 'Fijo') fixedCosts -= Number(oldExpense.monto);
+        if (oldExpense.tipo === 'Variable') variableCosts -= Number(oldExpense.monto);
+      }
+      if (updatedExpense && updatedExpense.categoria !== 'Pago Sueldos') {
+        if (updatedExpense.tipo === 'Fijo') fixedCosts += Number(updatedExpense.monto);
+        if (updatedExpense.tipo === 'Variable') variableCosts += Number(updatedExpense.monto);
+      }
+
+      return {
+        ...prev,
+        expenses: updatedExpenses,
+        fixedCosts,
+        variableCosts
+      };
+    });
+
+    setTrigger(prev => prev + 1); // Forzar recálculo completo de flujos de caja y otros meses
+    return { data: updatedExpense };
+  };
+
+  return { data, loading, addExpense, deleteExpense, updateExpense, refetchData: () => setTrigger(prev => prev + 1) };
 };
