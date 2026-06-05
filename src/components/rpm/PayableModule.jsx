@@ -19,7 +19,8 @@ import {
   Mail,
   Phone,
   Search,
-  X
+  X,
+  Edit2
 } from 'lucide-react';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
@@ -54,6 +55,10 @@ export default function PayableModule() {
   const [activeTab, setActiveTab] = useState('facturas'); // 'facturas' o 'proveedores'
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+
+  // Estados de Edición
+  const [editingSupplier, setEditingSupplier] = useState(null);
+  const [editingInvoice, setEditingInvoice] = useState(null);
 
   // Estados de Proveedores
   const [suppliers, setSuppliers] = useState([]);
@@ -211,8 +216,15 @@ export default function PayableModule() {
     if (!newSupplier.nombre.trim()) return;
 
     const suppliersKey = `nexus_rpm_suppliers_${companyId}`;
-    const id = `prov-${Date.now()}`;
-    const updatedSuppliers = [...suppliers, { ...newSupplier, id }];
+    let updatedSuppliers;
+
+    if (editingSupplier) {
+      updatedSuppliers = suppliers.map(s => s.id === editingSupplier.id ? { ...newSupplier, id: editingSupplier.id } : s);
+      setEditingSupplier(null);
+    } else {
+      const id = `prov-${Date.now()}`;
+      updatedSuppliers = [...suppliers, { ...newSupplier, id }];
+    }
     
     setSuppliers(updatedSuppliers);
     localStorage.setItem(suppliersKey, JSON.stringify(updatedSuppliers));
@@ -285,33 +297,61 @@ export default function PayableModule() {
     setSaving(true);
 
     try {
-      // 1. Guardar como egreso financiero en Supabase (para sumarse en caja)
-      const res = await addExpense({
-        tipo: 'Variable',
-        categoria: finalCategoria,
-        monto: Number(newInvoice.montoTotal),
-        fecha: newInvoice.fechaEmision,
-        aplica_credito_iva: newInvoice.aplicaCreditoIva
-      });
+      if (editingInvoice) {
+        // 1. Actualizar egreso en Supabase
+        const res = await updateExpense(editingInvoice.id, {
+          categoria: finalCategoria,
+          monto: Number(newInvoice.montoTotal),
+          fecha: newInvoice.fechaEmision,
+          aplica_credito_iva: newInvoice.aplicaCreditoIva
+        });
 
-      if (res.error) throw res.error;
+        if (res.error) throw res.error;
 
-      // 2. Guardar los metadatos de factura y vencimiento en localStorage vinculados al ID de Supabase
-      const createdExpense = res.data;
-      const detailsKey = `nexus_rpm_expense_details_${companyId}`;
-      const updatedDetails = {
-        ...expenseDetails,
-        [createdExpense.id]: {
-          supplierId: newInvoice.supplierId,
-          numeroFactura: newInvoice.numeroFactura,
-          fechaVencimiento: newInvoice.fechaVencimiento || addDays(newInvoice.fechaEmision, 30),
-          estadoPago: 'Pendiente',
-          fechaPagoReal: null
-        }
-      };
+        // 2. Actualizar metadatos locales
+        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        const updatedDetails = {
+          ...expenseDetails,
+          [editingInvoice.id]: {
+            ...expenseDetails[editingInvoice.id],
+            supplierId: newInvoice.supplierId,
+            numeroFactura: newInvoice.numeroFactura,
+            fechaVencimiento: newInvoice.fechaVencimiento
+          }
+        };
 
-      setExpenseDetails(updatedDetails);
-      localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+        setExpenseDetails(updatedDetails);
+        localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+        setEditingInvoice(null);
+      } else {
+        // 1. Guardar como egreso financiero en Supabase (para sumarse en caja)
+        const res = await addExpense({
+          tipo: 'Variable',
+          categoria: finalCategoria,
+          monto: Number(newInvoice.montoTotal),
+          fecha: newInvoice.fechaEmision,
+          aplica_credito_iva: newInvoice.aplicaCreditoIva
+        });
+
+        if (res.error) throw res.error;
+
+        // 2. Guardar los metadatos de factura y vencimiento en localStorage vinculados al ID de Supabase
+        const createdExpense = res.data;
+        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        const updatedDetails = {
+          ...expenseDetails,
+          [createdExpense.id]: {
+            supplierId: newInvoice.supplierId,
+            numeroFactura: newInvoice.numeroFactura,
+            fechaVencimiento: newInvoice.fechaVencimiento || addDays(newInvoice.fechaEmision, 30),
+            estadoPago: 'Pendiente',
+            fechaPagoReal: null
+          }
+        };
+
+        setExpenseDetails(updatedDetails);
+        localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+      }
 
       // Resetear formulario
       setNewInvoice({
@@ -330,7 +370,7 @@ export default function PayableModule() {
 
     } catch (err) {
       console.error(err);
-      alert("Error al registrar factura: " + (err.message || err));
+      alert("Error al guardar factura: " + (err.message || err));
     } finally {
       setSaving(false);
     }
@@ -502,6 +542,17 @@ export default function PayableModule() {
                     alert("Debes registrar al menos un proveedor en la pestaña 'Gestión de Proveedores' antes de ingresar facturas.");
                     return;
                   }
+                  setEditingInvoice(null);
+                  setNewInvoice({
+                    supplierId: '',
+                    numeroFactura: '',
+                    montoTotal: '',
+                    clasificacion: 'OPEX',
+                    categoria: '',
+                    fechaEmision: new Date().toISOString().split('T')[0],
+                    fechaVencimiento: '',
+                    aplicaCreditoIva: false
+                  });
                   setShowInvoiceModal(true);
                 }}
                 className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-md transition-all"
@@ -511,7 +562,17 @@ export default function PayableModule() {
               </button>
             ) : (
               <button
-                onClick={() => setShowSupplierModal(true)}
+                onClick={() => {
+                  setEditingSupplier(null);
+                  setNewSupplier({
+                    nombre: '',
+                    rut: '',
+                    plazoPagoDias: 30,
+                    contactoMail: '',
+                    contactoFono: ''
+                  });
+                  setShowSupplierModal(true);
+                }}
                 className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-md transition-all"
               >
                 <UserPlus size={15} />
@@ -609,6 +670,26 @@ export default function PayableModule() {
                                 </button>
                               )}
                               <button
+                                onClick={() => {
+                                  setEditingInvoice(inv);
+                                  setNewInvoice({
+                                    supplierId: inv.detail.supplierId,
+                                    numeroFactura: inv.numeroFactura,
+                                    montoTotal: inv.monto.toString(),
+                                    clasificacion: capexCategories.includes(inv.categoria) ? 'CAPEX' : 'OPEX',
+                                    categoria: inv.categoria,
+                                    fechaEmision: inv.fecha,
+                                    fechaVencimiento: inv.fechaVencimiento,
+                                    aplicaCreditoIva: inv.aplica_credito_iva
+                                  });
+                                  setShowInvoiceModal(true);
+                                }}
+                                className="text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 p-2 rounded-lg transition-colors border border-transparent hover:border-cyan-100"
+                                title="Editar Factura"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                              <button
                                 onClick={() => handleDeleteInvoice(inv)}
                                 disabled={isDeleting}
                                 className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-lg transition-colors border border-transparent hover:border-rose-100"
@@ -687,6 +768,23 @@ export default function PayableModule() {
 
                     <div className="flex justify-end pt-4 mt-3 border-t border-slate-100 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
+                        onClick={() => {
+                          setEditingSupplier(s);
+                          setNewSupplier({
+                            nombre: s.nombre,
+                            rut: s.rut || '',
+                            plazoPagoDias: s.plazoPagoDias,
+                            contactoMail: s.contactoMail || '',
+                            contactoFono: s.contactoFono || ''
+                          });
+                          setShowSupplierModal(true);
+                        }}
+                        className="text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-cyan-100 mr-1"
+                        title="Editar Proveedor"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
                         onClick={() => handleDeleteSupplier(s.id)}
                         className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-rose-100"
                         title="Eliminar Proveedor"
@@ -720,7 +818,7 @@ export default function PayableModule() {
             <div className="p-6">
               <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <Building2 className="text-cyan-600" size={18} />
-                Registrar Nuevo Proveedor
+                {editingSupplier ? 'Editar Proveedor' : 'Registrar Nuevo Proveedor'}
               </h2>
               
               <form onSubmit={handleSaveSupplier} className="space-y-4 text-xs">
@@ -824,7 +922,7 @@ export default function PayableModule() {
             <div className="p-6">
               <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <Receipt className="text-cyan-600" size={18} />
-                Ingresar Factura de Proveedor
+                {editingInvoice ? 'Editar Factura de Proveedor' : 'Ingresar Factura de Proveedor'}
               </h2>
               
               <form onSubmit={handleSaveInvoice} className="space-y-4 text-xs">
@@ -994,7 +1092,7 @@ export default function PayableModule() {
                     disabled={saving}
                     className="bg-cyan-600 hover:bg-cyan-700 text-white px-5 py-2 rounded-xl font-bold transition-all shadow-md disabled:opacity-50"
                   >
-                    {saving ? 'Ingresando...' : 'Ingresar Factura'}
+                    {saving ? 'Guardando...' : editingInvoice ? 'Guardar Cambios' : 'Ingresar Factura'}
                   </button>
                 </div>
               </form>
