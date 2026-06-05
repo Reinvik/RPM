@@ -1007,7 +1007,7 @@ export default function ExpensesModule() {
         {/* Contenido del Tab Activo */}
         <div className="p-5">
           {activeTab === 'OPEX' ? (
-            <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-1">
+            <div className="space-y-3 pr-1">
               {opex.length === 0 ? (
                 <p className="text-slate-400 text-xs py-12 text-center font-medium">
                   No hay gastos operacionales registrados en este período.
@@ -1017,7 +1017,7 @@ export default function ExpensesModule() {
               )}
             </div>
           ) : (
-            <div className="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-1">
+            <div className="space-y-3 pr-1">
               {capex.length === 0 ? (
                 <p className="text-slate-400 text-xs py-12 text-center font-medium">
                   No hay inversiones de capital (CAPEX) registradas en este período.
