@@ -94,6 +94,14 @@ export default function PayableModule() {
     aplicaCreditoIva: false
   });
 
+  // Estados para Cuotas en Cuentas por Pagar
+  const [isCuotasEnabled, setIsCuotasEnabled] = useState(false);
+  const [numCuotas, setNumCuotas] = useState(3);
+  const [tipoCalculoCuotas, setTipoCalculoCuotas] = useState('dividir'); // 'dividir' o 'monto_fijo'
+  const [montoFijoCuota, setMontoFijoCuota] = useState('');
+  const [cuotasList, setCuotasList] = useState([]);
+
+
   // Cargar Proveedores, Detalles de Gastos y Categorías desde LocalStorage al iniciar
   useEffect(() => {
     if (!companyId) return;
@@ -121,17 +129,121 @@ export default function PayableModule() {
     return date.toISOString().split('T')[0];
   };
 
+  // Helper para sumar meses a una fecha
+  const addMonths = (dateStr, months) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr + 'T00:00:00');
+    date.setMonth(date.getMonth() + months);
+    return date.toISOString().split('T')[0];
+  };
+
+  // Generar la lista de cuotas automáticamente
+  const generateCuotas = (totalAmount, baseDate, count, type, fixedVal, enabled = isCuotasEnabled) => {
+    if (!enabled || !totalAmount || Number(totalAmount) <= 0) {
+      setCuotasList([]);
+      return;
+    }
+
+    const total = Number(totalAmount);
+    const list = [];
+    const fechaInicio = baseDate || newInvoice.fechaVencimiento || newInvoice.fechaEmision || new Date().toISOString().split('T')[0];
+
+    if (type === 'dividir') {
+      if (count < 2) return;
+      const baseMonto = Math.floor(total / count);
+      
+      for (let i = 0; i < count; i++) {
+        const cuotaMonto = i === count - 1 
+          ? total - (baseMonto * (count - 1)) 
+          : baseMonto;
+        
+        list.push({
+          id: `cuota-${i}-${Date.now()}-${Math.random()}`,
+          numero: i + 1,
+          monto: cuotaMonto,
+          fecha: addMonths(fechaInicio, i)
+        });
+      }
+    } else {
+      // Modo Monto Fijo + Resto Final
+      const valorCuota = Number(fixedVal);
+      if (!valorCuota || valorCuota <= 0) return;
+
+      if (valorCuota >= total) {
+        list.push({
+          id: `cuota-0-${Date.now()}-${Math.random()}`,
+          numero: 1,
+          monto: total,
+          fecha: fechaInicio
+        });
+      } else {
+        const cantidadCuotasEnteras = Math.floor(total / valorCuota);
+        
+        if (cantidadCuotasEnteras > 60) {
+          return;
+        }
+
+        const resto = total % valorCuota;
+        
+        for (let i = 0; i < cantidadCuotasEnteras; i++) {
+          list.push({
+            id: `cuota-${i}-${Date.now()}-${Math.random()}`,
+            numero: i + 1,
+            monto: valorCuota,
+            fecha: addMonths(fechaInicio, i)
+          });
+        }
+        
+        if (resto > 0) {
+          list.push({
+            id: `cuota-${cantidadCuotasEnteras}-${Date.now()}-${Math.random()}`,
+            numero: cantidadCuotasEnteras + 1,
+            monto: resto,
+            fecha: addMonths(fechaInicio, cantidadCuotasEnteras)
+          });
+        }
+      }
+    }
+    setCuotasList(list);
+  };
+
+  const handleCuotaChange = (index, field, value) => {
+    const updated = [...cuotasList];
+    const parsedValue = field === 'monto' ? Number(value || 0) : value;
+
+    updated[index] = {
+      ...updated[index],
+      [field]: parsedValue
+    };
+
+    setCuotasList(updated);
+
+    if (field === 'monto') {
+      const newTotal = updated.reduce((sum, c) => sum + Number(c.monto || 0), 0);
+      setNewInvoice(prev => ({
+        ...prev,
+        montoTotal: newTotal.toString()
+      }));
+    }
+  };
+
+
   // Calcular fecha de vencimiento automática cuando cambia la fecha de emisión o el proveedor
   useEffect(() => {
     if (!newInvoice.supplierId || !newInvoice.fechaEmision) return;
     const selectedSupplier = suppliers.find(s => s.id === newInvoice.supplierId);
     if (selectedSupplier) {
+      const computedVenc = addDays(newInvoice.fechaEmision, selectedSupplier.plazoPagoDias);
       setNewInvoice(prev => ({
         ...prev,
-        fechaVencimiento: addDays(prev.fechaEmision, selectedSupplier.plazoPagoDias)
+        fechaVencimiento: computedVenc
       }));
+      if (isCuotasEnabled) {
+        generateCuotas(newInvoice.montoTotal, computedVenc, numCuotas, tipoCalculoCuotas, montoFijoCuota);
+      }
     }
   }, [newInvoice.supplierId, newInvoice.fechaEmision, suppliers]);
+
 
   // Cruzar egresos de Supabase con los detalles locales de facturas
   const invoices = useMemo(() => {
@@ -323,6 +435,35 @@ export default function PayableModule() {
         setExpenseDetails(updatedDetails);
         localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
         setEditingInvoice(null);
+      } else if (isCuotasEnabled && cuotasList.length > 0) {
+        // 1. Modo Registro por Cuotas
+        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        let tempDetails = { ...expenseDetails };
+
+        for (const c of cuotasList) {
+          const res = await addExpense({
+            tipo: 'Variable',
+            categoria: `${finalCategoria} (Cuota ${c.numero}/${cuotasList.length})`,
+            monto: Number(c.monto),
+            fecha: c.fecha,
+            aplica_credito_iva: newInvoice.aplicaCreditoIva
+          });
+
+          if (res.error) throw res.error;
+
+          const createdExpense = res.data;
+          tempDetails[createdExpense.id] = {
+            supplierId: newInvoice.supplierId,
+            numeroFactura: `${newInvoice.numeroFactura}-C${c.numero}`,
+            fechaVencimiento: c.fecha,
+            estadoPago: 'Pendiente',
+            fechaPagoReal: null
+          };
+        }
+
+        // 2. Guardar acumulado en localStorage y actualizar estado
+        setExpenseDetails(tempDetails);
+        localStorage.setItem(detailsKey, JSON.stringify(tempDetails));
       } else {
         // 1. Guardar como egreso financiero en Supabase (para sumarse en caja)
         const res = await addExpense({
@@ -364,9 +505,14 @@ export default function PayableModule() {
         fechaVencimiento: '',
         aplicaCreditoIva: false
       });
+      setIsCuotasEnabled(false);
+      setTipoCalculoCuotas('dividir');
+      setMontoFijoCuota('');
+      setCuotasList([]);
       setShowNewCategoryInput(false);
       setNewCategoryName('');
       setShowInvoiceModal(false);
+
 
     } catch (err) {
       console.error(err);
@@ -966,7 +1112,12 @@ export default function PayableModule() {
                       min="1"
                       placeholder="Ej: 150000"
                       value={newInvoice.montoTotal}
-                      onChange={(e) => setNewInvoice({...newInvoice, montoTotal: e.target.value})}
+                      onChange={(e) => {
+                        setNewInvoice({...newInvoice, montoTotal: e.target.value});
+                        if (isCuotasEnabled) {
+                          generateCuotas(e.target.value, newInvoice.fechaVencimiento, numCuotas, tipoCalculoCuotas, montoFijoCuota);
+                        }
+                      }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none transition-all font-semibold"
                     />
                   </div>
@@ -1021,7 +1172,7 @@ export default function PayableModule() {
                             setNewInvoice({...newInvoice, categoria: e.target.value});
                           }
                         }}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none transition-all"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 focus:ring-2 focus:ring-cyan-550 outline-none transition-all"
                       >
                         <option value="">Selecciona categoría</option>
                         {(newInvoice.clasificacion === 'OPEX' ? opexCategories : capexCategories).map(cat => (
@@ -1053,7 +1204,12 @@ export default function PayableModule() {
                       type="date"
                       required
                       value={newInvoice.fechaVencimiento}
-                      onChange={(e) => setNewInvoice({...newInvoice, fechaVencimiento: e.target.value})}
+                      onChange={(e) => {
+                        setNewInvoice({...newInvoice, fechaVencimiento: e.target.value});
+                        if (isCuotasEnabled) {
+                          generateCuotas(newInvoice.montoTotal, e.target.value, numCuotas, tipoCalculoCuotas, montoFijoCuota);
+                        }
+                      }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 focus:ring-2 focus:ring-cyan-500 outline-none transition-all font-semibold"
                     />
                   </div>
@@ -1075,6 +1231,137 @@ export default function PayableModule() {
                   </label>
                 </div>
 
+                {/* Sección de Registro en Cuotas Flexibles */}
+                {!editingInvoice && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 col-span-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input 
+                          type="checkbox" 
+                          className="w-3.5 h-3.5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-550 bg-white"
+                          checked={isCuotasEnabled}
+                          onChange={(e) => {
+                            setIsCuotasEnabled(e.target.checked);
+                            if (e.target.checked) {
+                              generateCuotas(newInvoice.montoTotal, newInvoice.fechaVencimiento, numCuotas, tipoCalculoCuotas, montoFijoCuota, true);
+                            } else {
+                              setCuotasList([]);
+                            }
+                          }}
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-700 block">¿Dividir factura en cuotas?</span>
+                          <span className="text-[10px] text-slate-400 block">Registrar deudas con vencimientos mensuales</span>
+                        </div>
+                      </label>
+
+                      {isCuotasEnabled && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex bg-slate-200 p-0.5 rounded-lg">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTipoCalculoCuotas('dividir');
+                                generateCuotas(newInvoice.montoTotal, newInvoice.fechaVencimiento, numCuotas, 'dividir', montoFijoCuota);
+                              }}
+                              className={`px-2 py-0.5 text-[9px] font-bold rounded transition-all ${
+                                tipoCalculoCuotas === 'dividir'
+                                  ? 'bg-white text-slate-800 shadow-sm'
+                                  : 'text-slate-550 hover:text-slate-800'
+                              }`}
+                            >
+                              Dividir Total
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTipoCalculoCuotas('monto_fijo');
+                                generateCuotas(newInvoice.montoTotal, newInvoice.fechaVencimiento, numCuotas, 'monto_fijo', montoFijoCuota);
+                              }}
+                              className={`px-2 py-0.5 text-[9px] font-bold rounded transition-all ${
+                                tipoCalculoCuotas === 'monto_fijo'
+                                  ? 'bg-white text-slate-800 shadow-sm'
+                                  : 'text-slate-550 hover:text-slate-800'
+                              }`}
+                            >
+                              Fijo + Resto
+                            </button>
+                          </div>
+
+                          {tipoCalculoCuotas === 'dividir' ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-slate-500 uppercase">Cant:</span>
+                              <input 
+                                type="number" 
+                                min="2" 
+                                max="48"
+                                value={numCuotas} 
+                                onChange={(e) => {
+                                  const val = Math.max(2, Number(e.target.value));
+                                  setNumCuotas(val);
+                                  generateCuotas(newInvoice.montoTotal, newInvoice.fechaVencimiento, val, tipoCalculoCuotas, montoFijoCuota);
+                                }}
+                                className="w-10 bg-white border border-slate-200 rounded p-0.5 text-center text-[10px] font-bold text-slate-700 outline-none"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-slate-500 uppercase">Monto:</span>
+                              <div className="relative">
+                                <span className="absolute left-1 top-0.5 text-[9px] text-slate-400 font-bold">$</span>
+                                <input 
+                                  type="number" 
+                                  placeholder="Monto"
+                                  value={montoFijoCuota} 
+                                  onChange={(e) => {
+                                    setMontoFijoCuota(e.target.value);
+                                    generateCuotas(newInvoice.montoTotal, newInvoice.fechaVencimiento, numCuotas, tipoCalculoCuotas, e.target.value);
+                                  }}
+                                  className="w-16 bg-white border border-slate-200 rounded p-0.5 pl-3.5 text-[10px] font-bold text-slate-700 outline-none"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {isCuotasEnabled && cuotasList.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-slate-200">
+                        <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Planificación y Ajuste de Cuotas</p>
+                        <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-1">
+                          {cuotasList.map((cuota, idx) => (
+                            <div key={cuota.id || idx} className="bg-white p-2 rounded-xl border border-slate-250 flex items-center justify-between gap-2 shadow-xs">
+                              <span className="text-[10px] font-bold text-slate-500 shrink-0">Cuota {cuota.numero}</span>
+                              <div className="flex gap-1.5 flex-1">
+                                <div className="relative flex-1">
+                                  <span className="absolute left-2 top-1 text-[10px] text-slate-400 font-bold">$</span>
+                                  <input 
+                                    type="number" 
+                                    value={cuota.monto} 
+                                    onChange={(e) => handleCuotaChange(idx, 'monto', e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded p-1 pl-4.5 text-[10px] font-bold text-slate-700 outline-none"
+                                  />
+                                </div>
+                                <input 
+                                  type="date" 
+                                  value={cuota.fecha} 
+                                  onChange={(e) => handleCuotaChange(idx, 'fecha', e.target.value)}
+                                  className="bg-slate-50 border border-slate-200 rounded p-1 text-[10px] text-slate-650 outline-none"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="bg-cyan-50/50 border border-cyan-100 rounded-xl p-2.5 flex justify-between items-center text-[10px] font-bold text-cyan-800">
+                          <span>Total acumulado en cuotas:</span>
+                          <span>${Number(newInvoice.montoTotal || 0).toLocaleString('es-CL')}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                   <button
                     type="button"
@@ -1095,6 +1382,7 @@ export default function PayableModule() {
                     {saving ? 'Guardando...' : editingInvoice ? 'Guardar Cambios' : 'Ingresar Factura'}
                   </button>
                 </div>
+
               </form>
             </div>
           </div>

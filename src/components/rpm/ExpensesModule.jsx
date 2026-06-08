@@ -81,42 +81,42 @@ export default function ExpensesModule() {
   };
 
   // Generar la lista de cuotas automáticamente cuando cambian los inputs principales o el modo de cálculo
-  useEffect(() => {
-    if (!isCuotasEnabled || !monto || Number(monto) <= 0) {
+  const regenerateCuotasList = (montoVal, fechaVal, numCuotasVal, tipoCalculoVal, montoFijoVal, enabled = isCuotasEnabled) => {
+    if (!enabled || !montoVal || Number(montoVal) <= 0) {
       setCuotasList([]);
       return;
     }
 
-    const total = Number(monto);
+    const total = Number(montoVal);
     const list = [];
 
-    if (tipoCalculoCuotas === 'dividir') {
-      if (numCuotas < 2) return;
-      const baseMonto = Math.floor(total / numCuotas);
+    if (tipoCalculoVal === 'dividir') {
+      if (numCuotasVal < 2) return;
+      const baseMonto = Math.floor(total / numCuotasVal);
       
-      for (let i = 0; i < numCuotas; i++) {
-        const cuotaMonto = i === numCuotas - 1 
-          ? total - (baseMonto * (numCuotas - 1)) 
+      for (let i = 0; i < numCuotasVal; i++) {
+        const cuotaMonto = i === numCuotasVal - 1 
+          ? total - (baseMonto * (numCuotasVal - 1)) 
           : baseMonto;
         
         list.push({
-          id: `cuota-${i}-${Date.now()}`,
+          id: `cuota-${i}-${Date.now()}-${Math.random()}`,
           numero: i + 1,
           monto: cuotaMonto,
-          fecha: addMonths(fecha, i)
+          fecha: addMonths(fechaVal, i)
         });
       }
     } else {
       // Modo Monto Fijo + Resto Final
-      const valorCuota = Number(montoFijoCuota);
+      const valorCuota = Number(montoFijoVal);
       if (!valorCuota || valorCuota <= 0) return;
 
       if (valorCuota >= total) {
         list.push({
-          id: `cuota-0-${Date.now()}`,
+          id: `cuota-0-${Date.now()}-${Math.random()}`,
           numero: 1,
           monto: total,
-          fecha: fecha
+          fecha: fechaVal
         });
       } else {
         const cantidadCuotasEnteras = Math.floor(total / valorCuota);
@@ -130,25 +130,26 @@ export default function ExpensesModule() {
         
         for (let i = 0; i < cantidadCuotasEnteras; i++) {
           list.push({
-            id: `cuota-${i}-${Date.now()}`,
+            id: `cuota-${i}-${Date.now()}-${Math.random()}`,
             numero: i + 1,
             monto: valorCuota,
-            fecha: addMonths(fecha, i)
+            fecha: addMonths(fechaVal, i)
           });
         }
         
         if (resto > 0) {
           list.push({
-            id: `cuota-${cantidadCuotasEnteras}-${Date.now()}`,
+            id: `cuota-${cantidadCuotasEnteras}-${Date.now()}-${Math.random()}`,
             numero: cantidadCuotasEnteras + 1,
             monto: resto,
-            fecha: addMonths(fecha, cantidadCuotasEnteras)
+            fecha: addMonths(fechaVal, cantidadCuotasEnteras)
           });
         }
       }
     }
     setCuotasList(list);
-  }, [isCuotasEnabled, monto, fecha, numCuotas, tipoCalculoCuotas, montoFijoCuota]);
+  };
+
 
   // Manejar el cambio individual de una cuota
   const handleCuotaChange = (index, field, value) => {
@@ -509,7 +510,10 @@ export default function ExpensesModule() {
                   <input
                     type="number"
                     value={monto}
-                    onChange={(e) => setMonto(e.target.value)}
+                    onChange={(e) => {
+                      setMonto(e.target.value);
+                      if (isCuotasEnabled) regenerateCuotasList(e.target.value, fecha, numCuotas, tipoCalculoCuotas, montoFijoCuota);
+                    }}
                     placeholder="Ej: 150000"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-8 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
                     required
@@ -523,7 +527,10 @@ export default function ExpensesModule() {
                 <input
                   type="date"
                   value={fecha}
-                  onChange={(e) => setFecha(e.target.value)}
+                  onChange={(e) => {
+                    setFecha(e.target.value);
+                    if (isCuotasEnabled) regenerateCuotasList(monto, e.target.value, numCuotas, tipoCalculoCuotas, montoFijoCuota);
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                   required
                 />
@@ -566,7 +573,14 @@ export default function ExpensesModule() {
                       type="checkbox" 
                       className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 bg-white"
                       checked={isCuotasEnabled}
-                      onChange={(e) => setIsCuotasEnabled(e.target.checked)}
+                      onChange={(e) => {
+                        setIsCuotasEnabled(e.target.checked);
+                        if (e.target.checked) {
+                          regenerateCuotasList(monto, fecha, numCuotas, tipoCalculoCuotas, montoFijoCuota, true);
+                        } else {
+                          setCuotasList([]);
+                        }
+                      }}
                     />
                     <div>
                       <span className="text-xs font-bold text-slate-700 block">¿Dividir este egreso en cuotas?</span>
@@ -579,7 +593,10 @@ export default function ExpensesModule() {
                       <div className="flex bg-slate-200 p-0.5 rounded-lg">
                         <button
                           type="button"
-                          onClick={() => setTipoCalculoCuotas('dividir')}
+                          onClick={() => {
+                            setTipoCalculoCuotas('dividir');
+                            regenerateCuotasList(monto, fecha, numCuotas, 'dividir', montoFijoCuota);
+                          }}
                           className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
                             tipoCalculoCuotas === 'dividir'
                               ? 'bg-white text-slate-800 shadow-sm'
@@ -590,7 +607,10 @@ export default function ExpensesModule() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setTipoCalculoCuotas('monto_fijo')}
+                          onClick={() => {
+                            setTipoCalculoCuotas('monto_fijo');
+                            regenerateCuotasList(monto, fecha, numCuotas, 'monto_fijo', montoFijoCuota);
+                          }}
                           className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
                             tipoCalculoCuotas === 'monto_fijo'
                               ? 'bg-white text-slate-800 shadow-sm'
@@ -609,7 +629,11 @@ export default function ExpensesModule() {
                             min="2" 
                             max="48"
                             value={numCuotas} 
-                            onChange={(e) => setNumCuotas(Math.max(2, Number(e.target.value)))}
+                            onChange={(e) => {
+                              const val = Math.max(2, Number(e.target.value));
+                              setNumCuotas(val);
+                              regenerateCuotasList(monto, fecha, val, tipoCalculoCuotas, montoFijoCuota);
+                            }}
                             className="w-14 bg-white border border-slate-200 rounded-lg p-1 text-center text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
                           />
                         </div>
@@ -622,7 +646,10 @@ export default function ExpensesModule() {
                               type="number" 
                               placeholder="Monto"
                               value={montoFijoCuota} 
-                              onChange={(e) => setMontoFijoCuota(e.target.value)}
+                              onChange={(e) => {
+                                setMontoFijoCuota(e.target.value);
+                                regenerateCuotasList(monto, fecha, numCuotas, tipoCalculoCuotas, e.target.value);
+                              }}
                               className="w-24 bg-white border border-slate-200 rounded-lg p-1 pl-4.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                           </div>
@@ -631,6 +658,7 @@ export default function ExpensesModule() {
                     </div>
                   )}
                 </div>
+
 
                 {isCuotasEnabled && cuotasList.length > 0 && (
                   <div className="space-y-3 pt-3 border-t border-slate-200">
