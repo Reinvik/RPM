@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   DollarSign, 
   Download, 
@@ -34,9 +34,21 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export default function CashFlowModule() {
-  const { companyName } = useNexusContext();
+  const { companyName, companyId } = useNexusContext();
   const { data: { yearlyCashflow }, loading } = useNexusRPM();
   const currentYear = new Date().getFullYear();
+
+  // Estado del mes de inicio del flujo de caja
+  const [startMonthIdx, setStartMonthIdx] = useState(() => {
+    const saved = localStorage.getItem(`nexus_rpm_cashflow_start_month_${companyId}`);
+    return saved !== null ? Number(saved) : 0;
+  });
+
+  const handleStartMonthChange = (e) => {
+    const idx = Number(e.target.value);
+    setStartMonthIdx(idx);
+    localStorage.setItem(`nexus_rpm_cashflow_start_month_${companyId}`, idx.toString());
+  };
 
   if (loading || !yearlyCashflow) {
     return (
@@ -78,39 +90,49 @@ export default function CashFlowModule() {
   const saldosIniciales = Array(12).fill(0);
   const saldosFinales = Array(12).fill(0);
   for (let m = 0; m < 12; m++) {
-    saldosIniciales[m] = m === 0 ? 0 : saldosFinales[m - 1];
-    saldosFinales[m] = saldosIniciales[m] + flujoNetoMensual[m];
+    if (m < startMonthIdx) {
+      saldosIniciales[m] = 0;
+      saldosFinales[m] = 0;
+    } else if (m === startMonthIdx) {
+      saldosIniciales[m] = 0;
+      saldosFinales[m] = saldosIniciales[m] + flujoNetoMensual[m];
+    } else {
+      saldosIniciales[m] = saldosFinales[m - 1];
+      saldosFinales[m] = saldosIniciales[m] + flujoNetoMensual[m];
+    }
   }
 
-  // 6. KPIs Totales Anuales
-  const anualIngresos = totalIngresos.reduce((sum, val) => sum + val, 0);
-  const anualGastos = totalGastos.reduce((sum, val) => sum + val, 0);
+  // 6. KPIs Totales Anuales (a partir del mes de inicio)
+  const anualIngresos = totalIngresos.slice(startMonthIdx).reduce((sum, val) => sum + val, 0);
+  const anualGastos = totalGastos.slice(startMonthIdx).reduce((sum, val) => sum + val, 0);
   const anualNeto = anualIngresos - anualGastos;
   const saldoFinalProyectado = saldosFinales[11];
 
+
   const exportToCSV = () => {
-    const headers = ['Concepto', ...MONTHS];
+    const visibleMonthsList = MONTHS.slice(startMonthIdx);
+    const headers = ['Concepto', ...visibleMonthsList];
     const rows = [];
     
-    rows.push(['Saldo Inicial', ...saldosIniciales.map(v => Math.round(v))]);
+    rows.push(['Saldo Inicial', ...saldosIniciales.slice(startMonthIdx).map(v => Math.round(v))]);
     rows.push([]);
     rows.push([`Ingresos ${companyName || 'Empresa'}`]);
-    rows.push(['Ventas Facturas', ...yearlyCashflow.ingresos.facturas.map(v => Math.round(v))]);
-    rows.push(['Ventas Boleta', ...yearlyCashflow.ingresos.boletas.map(v => Math.round(v))]);
-    rows.push(['Notas de crédito', ...Array(12).fill(0)]);
-    rows.push(['Ventas crédito', ...Array(12).fill(0)]);
-    rows.push(['Total Ingresos', ...totalIngresos.map(v => Math.round(v))]);
+    rows.push(['Ventas Facturas', ...yearlyCashflow.ingresos.facturas.slice(startMonthIdx).map(v => Math.round(v))]);
+    rows.push(['Ventas Boleta', ...yearlyCashflow.ingresos.boletas.slice(startMonthIdx).map(v => Math.round(v))]);
+    rows.push(['Notas de crédito', ...Array(12 - startMonthIdx).fill(0)]);
+    rows.push(['Ventas crédito', ...Array(12 - startMonthIdx).fill(0)]);
+    rows.push(['Total Ingresos', ...totalIngresos.slice(startMonthIdx).map(v => Math.round(v))]);
     rows.push([]);
     rows.push(['Gastos']);
     
     allExpenseCategories.forEach(cat => {
       const values = yearlyCashflow.gastos[cat] || Array(12).fill(0);
-      rows.push([cat, ...values.map(v => Math.round(v))]);
+      rows.push([cat, ...values.slice(startMonthIdx).map(v => Math.round(v))]);
     });
-    rows.push(['Total Gastos', ...totalGastos.map(v => Math.round(v))]);
+    rows.push(['Total Gastos', ...totalGastos.slice(startMonthIdx).map(v => Math.round(v))]);
     rows.push([]);
-    rows.push(['Flujo Neto Mensual', ...flujoNetoMensual.map(v => Math.round(v))]);
-    rows.push(['Saldo Final Acumulado', ...saldosFinales.map(v => Math.round(v))]);
+    rows.push(['Flujo Neto Mensual', ...flujoNetoMensual.slice(startMonthIdx).map(v => Math.round(v))]);
+    rows.push(['Saldo Final Acumulado', ...saldosFinales.slice(startMonthIdx).map(v => Math.round(v))]);
     
     const csvContent = "\uFEFF" + [
       headers.join(';'),
@@ -132,11 +154,23 @@ export default function CashFlowModule() {
       
       {/* Cabecera con selector y exportación */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div>
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-sm">
             <Calendar size={13} className="animate-pulse" />
             Periodo Financiero Anual: {currentYear}
           </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide text-[10px]">Mes de Inicio:</span>
+            <select
+              value={startMonthIdx}
+              onChange={handleStartMonthChange}
+              className="bg-white border border-slate-200 rounded-xl p-1.5 px-3 text-slate-700 text-xs font-extrabold focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm cursor-pointer"
+            >
+              {MONTHS.map((m, idx) => (
+                <option key={idx} value={idx}>{m}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <button 
           onClick={exportToCSV}
@@ -220,7 +254,7 @@ export default function CashFlowModule() {
                 <th className="px-4 py-3.5 min-w-[280px] sticky left-0 bg-slate-50 z-10 border-r border-slate-200 font-extrabold text-slate-800">
                   Concepto Financiero
                 </th>
-                {MONTHS.map(m => (
+                {MONTHS.slice(startMonthIdx).map(m => (
                   <th key={m} className="px-3 py-3 min-w-[95px] text-right border-l border-slate-200 font-extrabold text-slate-600">
                     {m}
                   </th>
@@ -234,11 +268,14 @@ export default function CashFlowModule() {
                 <td className="px-4 py-2.5 font-bold sticky left-0 bg-slate-100 border-r border-slate-200 z-10 text-slate-700">
                   Saldo Inicial Caja
                 </td>
-                {MONTHS.map((_, idx) => (
-                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-slate-600 font-semibold">
-                    ${fmt(saldosIniciales[idx])}
-                  </td>
-                ))}
+                {MONTHS.slice(startMonthIdx).map((_, idx) => {
+                  const originalIdx = startMonthIdx + idx;
+                  return (
+                    <td key={originalIdx} className="px-3 py-2.5 text-right border-l border-slate-200 text-slate-600 font-semibold">
+                      ${fmt(saldosIniciales[originalIdx])}
+                    </td>
+                  );
+                })}
               </tr>
 
               {/* TÍTULO SECCIÓN: INGRESOS */}
@@ -246,33 +283,45 @@ export default function CashFlowModule() {
                 <td className="px-4 py-2 font-extrabold text-blue-700 sticky left-0 bg-blue-50 border-r border-slate-200 z-10 whitespace-nowrap">
                   INGRESOS OPERACIONALES
                 </td>
-                {MONTHS.map((_, idx) => <td key={idx} className="border-l border-slate-200 bg-blue-50/20"></td>)}
+                {MONTHS.slice(startMonthIdx).map((_, idx) => <td key={idx} className="border-l border-slate-200 bg-blue-50/20"></td>)}
               </tr>
 
               {/* Categorías de Ingresos */}
               <tr className="hover:bg-slate-50 transition-colors group bg-white font-medium">
                 <td className="px-4 py-2 text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Ventas Facturas</td>
-                {MONTHS.map((_, idx) => (
-                  <td key={idx} className="px-3 py-2 text-right border-l border-slate-200 text-slate-600">
-                    ${fmt(yearlyCashflow.ingresos.facturas[idx])}
-                  </td>
-                ))}
+                {MONTHS.slice(startMonthIdx).map((_, idx) => {
+                  const originalIdx = startMonthIdx + idx;
+                  return (
+                    <td key={originalIdx} className="px-3 py-2 text-right border-l border-slate-200 text-slate-600">
+                      ${fmt(yearlyCashflow.ingresos.facturas[originalIdx])}
+                    </td>
+                  );
+                })}
               </tr>
               <tr className="hover:bg-slate-50 transition-colors group bg-white font-medium">
                 <td className="px-4 py-2 text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Ventas Boleta</td>
-                {MONTHS.map((_, idx) => (
-                  <td key={idx} className="px-3 py-2 text-right border-l border-slate-200 text-slate-600">
-                    ${fmt(yearlyCashflow.ingresos.boletas[idx])}
-                  </td>
-                ))}
+                {MONTHS.slice(startMonthIdx).map((_, idx) => {
+                  const originalIdx = startMonthIdx + idx;
+                  return (
+                    <td key={originalIdx} className="px-3 py-2 text-right border-l border-slate-200 text-slate-600">
+                      ${fmt(yearlyCashflow.ingresos.boletas[originalIdx])}
+                    </td>
+                  );
+                })}
               </tr>
               <tr className="hover:bg-slate-50 transition-colors group bg-white text-slate-400 font-medium">
                 <td className="px-4 py-2 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Notas de Crédito</td>
-                {MONTHS.map((_, idx) => <td key={idx} className="px-3 py-2 text-right border-l border-slate-200">$0</td>)}
+                {MONTHS.slice(startMonthIdx).map((_, idx) => {
+                  const originalIdx = startMonthIdx + idx;
+                  return <td key={originalIdx} className="px-3 py-2 text-right border-l border-slate-200">$0</td>;
+                })}
               </tr>
               <tr className="hover:bg-slate-50 transition-colors group bg-white text-slate-400 font-medium">
                 <td className="px-4 py-2 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">Ventas Crédito</td>
-                {MONTHS.map((_, idx) => <td key={idx} className="px-3 py-2 text-right border-l border-slate-200">$0</td>)}
+                {MONTHS.slice(startMonthIdx).map((_, idx) => {
+                  const originalIdx = startMonthIdx + idx;
+                  return <td key={originalIdx} className="px-3 py-2 text-right border-l border-slate-200">$0</td>;
+                })}
               </tr>
 
               {/* TOTAL INGRESOS */}
@@ -280,11 +329,14 @@ export default function CashFlowModule() {
                 <td className="px-4 py-2.5 text-blue-800 sticky left-0 bg-blue-100 border-r border-slate-200 z-10">
                   Total Ingresos
                 </td>
-                {MONTHS.map((_, idx) => (
-                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-blue-800 font-extrabold bg-blue-50/30">
-                    ${fmt(totalIngresos[idx])}
-                  </td>
-                ))}
+                {MONTHS.slice(startMonthIdx).map((_, idx) => {
+                  const originalIdx = startMonthIdx + idx;
+                  return (
+                    <td key={originalIdx} className="px-3 py-2.5 text-right border-l border-slate-200 text-blue-800 font-extrabold bg-blue-50/30">
+                      ${fmt(totalIngresos[originalIdx])}
+                    </td>
+                  );
+                })}
               </tr>
 
               {/* TÍTULO SECCIÓN: GASTOS */}
@@ -292,7 +344,7 @@ export default function CashFlowModule() {
                 <td className="px-4 py-2 font-extrabold text-rose-700 sticky left-0 bg-rose-50 border-r border-slate-200 z-10 whitespace-nowrap">
                   GASTOS Y EGRESOS
                 </td>
-                {MONTHS.map((_, idx) => <td key={idx} className="border-l border-slate-200 bg-rose-50/20"></td>)}
+                {MONTHS.slice(startMonthIdx).map((_, idx) => <td key={idx} className="border-l border-slate-200 bg-rose-50/20"></td>)}
               </tr>
 
               {/* Categorías de Gastos Dinámicos */}
@@ -304,11 +356,14 @@ export default function CashFlowModule() {
                     <td className="px-4 py-2 sticky left-0 bg-white group-hover:bg-slate-50 border-r border-slate-200 z-10">
                       {cat}
                     </td>
-                    {MONTHS.map((_, mIdx) => (
-                      <td key={mIdx} className="px-3 py-2 text-right border-l border-slate-200">
-                        {values[mIdx] > 0 ? `$${fmt(values[mIdx])}` : '$0'}
-                      </td>
-                    ))}
+                    {MONTHS.slice(startMonthIdx).map((_, mIdx) => {
+                      const originalIdx = startMonthIdx + mIdx;
+                      return (
+                        <td key={originalIdx} className="px-3 py-2 text-right border-l border-slate-200">
+                          {values[originalIdx] > 0 ? `$${fmt(values[originalIdx])}` : '$0'}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}
@@ -318,11 +373,14 @@ export default function CashFlowModule() {
                 <td className="px-4 py-2.5 text-rose-800 sticky left-0 bg-rose-100 border-r border-slate-200 z-10">
                   Total Gastos
                 </td>
-                {MONTHS.map((_, idx) => (
-                  <td key={idx} className="px-3 py-2.5 text-right border-l border-slate-200 text-rose-800 font-extrabold bg-rose-50/30">
-                    ${fmt(totalGastos[idx])}
-                  </td>
-                ))}
+                {MONTHS.slice(startMonthIdx).map((_, idx) => {
+                  const originalIdx = startMonthIdx + idx;
+                  return (
+                    <td key={originalIdx} className="px-3 py-2.5 text-right border-l border-slate-200 text-rose-800 font-extrabold bg-rose-50/30">
+                      ${fmt(totalGastos[originalIdx])}
+                    </td>
+                  );
+                })}
               </tr>
 
               {/* FLUJO NETO MENSUAL */}
@@ -330,11 +388,12 @@ export default function CashFlowModule() {
                 <td className="px-4 py-2.5 sticky left-0 bg-slate-200 border-r border-slate-300 z-10 text-[10px] uppercase tracking-wider">
                   Flujo Neto Mensual
                 </td>
-                {MONTHS.map((_, idx) => {
-                  const neto = flujoNetoMensual[idx];
+                {MONTHS.slice(startMonthIdx).map((_, idx) => {
+                  const originalIdx = startMonthIdx + idx;
+                  const neto = flujoNetoMensual[originalIdx];
                   return (
                     <td 
-                      key={idx} 
+                      key={originalIdx} 
                       className={`px-3 py-2.5 text-right border-l border-slate-200 font-extrabold
                         ${neto > 0 ? 'text-emerald-700 bg-emerald-50/30' : neto < 0 ? 'text-rose-700 bg-rose-50/30' : 'text-slate-500 bg-slate-50/30'}`}
                     >
@@ -349,11 +408,12 @@ export default function CashFlowModule() {
                 <td className="px-4 py-3 sticky left-0 bg-indigo-100 border-r border-indigo-200 z-10 text-sm">
                   Saldo Final Acumulado
                 </td>
-                {MONTHS.map((_, idx) => {
-                  const saldoFinal = saldosFinales[idx];
+                {MONTHS.slice(startMonthIdx).map((_, idx) => {
+                  const originalIdx = startMonthIdx + idx;
+                  const saldoFinal = saldosFinales[originalIdx];
                   return (
                     <td 
-                      key={idx} 
+                      key={originalIdx} 
                       className={`px-3 py-3 text-right border-l border-indigo-200 text-sm font-black bg-indigo-50/20
                         ${saldoFinal >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}
                     >
