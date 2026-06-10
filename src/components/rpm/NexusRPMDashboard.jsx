@@ -1,13 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import {
-  ChevronLeft,
-  ChevronRight,
   TrendingUp,
   TrendingDown,
   ArrowUpRight,
   ArrowDownRight,
-  Wallet,
-  Receipt,
   Target,
   AlertTriangle,
   CheckCircle,
@@ -17,18 +13,13 @@ import {
   ShieldCheck,
   DollarSign,
   BarChart3,
-  Lightbulb,
-  AlertCircle
+  AlertCircle,
+  ChevronRight
 } from 'lucide-react';
 import { useNexusContext } from '../../context/NexusContext';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 import MechanicSettlement from './MechanicSettlement';
-import ExpenseEntryModal from './ExpenseEntryModal';
 
-const MONTHS = [
-  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
-];
 
 const fmt = (num) => {
   if (!num && num !== 0) return '0';
@@ -154,38 +145,10 @@ export default function NexusRPMDashboard() {
     selectedYear, setSelectedYear
   } = useNexusContext();
 
-  const { data, loading, addExpense, refetchData } = useNexusRPM();
-  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const { data, loading, refetchData } = useNexusRPM();
   const [showMechanics, setShowMechanics] = useState(false);
 
-  // Navegación de período
-  const handlePrevMonth = () => {
-    if (selectedMonth === 0) {
-      setSelectedMonth(11);
-      setSelectedYear(selectedYear - 1);
-    } else {
-      setSelectedMonth(selectedMonth - 1);
-    }
-  };
-
-  const handleNextMonth = () => {
-    if (selectedMonth === 11) {
-      setSelectedMonth(0);
-      setSelectedYear(selectedYear + 1);
-    } else {
-      setSelectedMonth(selectedMonth + 1);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
-        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-slate-500 font-semibold animate-pulse">Sincronizando datos financieros...</p>
-      </div>
-    );
-  }
-
+  // ── Desestructurar data (siempre, sin condicional) ──
   const { salesTotal, fixedCosts, variableCosts, expenses, mechanics } = data;
 
   // ── Cálculos de IVA ──
@@ -212,11 +175,21 @@ export default function NexusRPMDashboard() {
     : (salesTotal > 0 ? 100 : 0);
   const isBreakEven   = salesTotal >= totalCosts;
 
-  // ── Insights del Asesor ──
+  // ── Insights del Asesor (useMemo SIEMPRE antes del early return) ──
   const insights = useMemo(() => buildInsights({
     salesTotal, opexTotal, resultado, margenPct,
     ivaAPagar: ivaDif, expenses, mechanics
   }), [salesTotal, opexTotal, resultado, margenPct, ivaDif, expenses, mechanics]);
+
+
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-slate-500 font-semibold animate-pulse">Sincronizando datos financieros...</p>
+      </div>
+    );
+  }
 
   const colorMap = {
     emerald: { bg: 'bg-emerald-50', border: 'border-emerald-200', icon: 'text-emerald-600', title: 'text-emerald-800', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
@@ -229,44 +202,12 @@ export default function NexusRPMDashboard() {
   return (
     <div className="space-y-6 text-slate-900">
 
-      {/* ── Header con Selector de Período ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-black text-slate-900">Resumen Financiero e Inteligencia de Negocio</h1>
-          <p className="text-xs text-slate-400 mt-0.5 font-medium">{companyName || 'Tu empresa'}</p>
-        </div>
-
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm">
-          <button
-            onClick={handlePrevMonth}
-            className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
-            title="Mes anterior"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <div className="flex items-center gap-2 px-2">
-            <Receipt size={14} className="text-blue-500" />
-            <span className="text-sm font-extrabold text-slate-800 min-w-[130px] text-center">
-              {MONTHS[selectedMonth]} {selectedYear}
-            </span>
-          </div>
-          <button
-            onClick={handleNextMonth}
-            className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
-            title="Mes siguiente"
-          >
-            <ChevronRight size={18} />
-          </button>
-          <div className="hidden sm:block h-5 w-[1px] bg-slate-200 mx-1"></div>
-          <button
-            onClick={() => setIsExpenseModalOpen(true)}
-            className="hidden sm:flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
-          >
-            <Receipt size={13} />
-            Ingresar Gasto
-          </button>
-        </div>
+      {/* ── Sub-título del módulo ── */}
+      <div>
+        <h1 className="text-xl font-black text-slate-900">Resumen Financiero e Inteligencia de Negocio</h1>
+        <p className="text-xs text-slate-400 mt-0.5 font-medium">{companyName || 'Tu empresa'}</p>
       </div>
+
 
       {/* ── 4 KPIs Principales ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -552,30 +493,7 @@ export default function NexusRPMDashboard() {
         )}
       </div>
 
-      {/* Botón móvil de ingreso de gasto */}
-      <div className="sm:hidden">
-        <button
-          onClick={() => setIsExpenseModalOpen(true)}
-          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-bold transition-all shadow-md"
-        >
-          <Receipt size={18} />
-          Ingresar Gasto Rápido
-        </button>
-      </div>
 
-      {/* Modal */}
-      <ExpenseEntryModal
-        isOpen={isExpenseModalOpen}
-        onClose={() => setIsExpenseModalOpen(false)}
-        onSave={async (expenseData) => {
-          const { error } = await addExpense(expenseData);
-          if (!error) {
-            setIsExpenseModalOpen(false);
-          } else {
-            alert('Error guardando gasto: ' + error.message);
-          }
-        }}
-      />
     </div>
   );
 }
