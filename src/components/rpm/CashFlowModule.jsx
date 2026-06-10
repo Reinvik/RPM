@@ -8,7 +8,8 @@ import {
   Wallet,
   Calendar,
   Percent,
-  FileText
+  FileText,
+  Info
 } from 'lucide-react';
 import { useNexusContext } from '../../context/NexusContext';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
@@ -33,15 +34,43 @@ const EXPENSE_CATEGORIES = [
   'Pago Publicidad'
 ];
 
+// Palabras clave para identificar si un gasto es fijo
+const FIXED_KEYWORDS = [
+  'sueldo', 
+  'arriendo', 
+  'imposicion', 
+  'contador', 
+  'software', 
+  'ssbb', 
+  'luz', 
+  'agua', 
+  'telefono', 
+  'publicidad', 
+  'internet', 
+  'fijo'
+];
+
+const isFixedExpense = (catName) => {
+  const name = catName.toLowerCase();
+  return FIXED_KEYWORDS.some(kw => name.includes(kw));
+};
+
 export default function CashFlowModule() {
   const { companyName, companyId } = useNexusContext();
   const { data: { yearlyCashflow }, loading } = useNexusRPM();
   const currentYear = new Date().getFullYear();
+  const currentMonthIdx = new Date().getMonth(); // Mes real del sistema (0-11)
 
   // Estado del mes de inicio del flujo de caja
   const [startMonthIdx, setStartMonthIdx] = useState(() => {
     const saved = localStorage.getItem(`nexus_rpm_cashflow_start_month_${companyId}`);
     return saved !== null ? Number(saved) : 0;
+  });
+
+  // Estado para ocultar gastos fijos de meses futuros
+  const [hideFutureFixed, setHideFutureFixed] = useState(() => {
+    const saved = localStorage.getItem(`nexus_rpm_cashflow_hide_future_fixed_${companyId}`);
+    return saved === 'true';
   });
 
   const handleStartMonthChange = (e) => {
@@ -50,11 +79,17 @@ export default function CashFlowModule() {
     localStorage.setItem(`nexus_rpm_cashflow_start_month_${companyId}`, idx.toString());
   };
 
+  const handleToggleHideFutureFixed = (e) => {
+    const checked = e.target.checked;
+    setHideFutureFixed(checked);
+    localStorage.setItem(`nexus_rpm_cashflow_hide_future_fixed_${companyId}`, checked.toString());
+  };
+
   if (loading || !yearlyCashflow) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-slate-500">
         <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="font-semibold text-slate-600">Cargando flujo de caja anual...</p>
+        <p className="font-semibold text-slate-655 font-pulse">Cargando flujo de caja anual...</p>
       </div>
     );
   }
@@ -76,10 +111,13 @@ export default function CashFlowModule() {
     (yearlyCashflow.ingresos.boletas[m] || 0)
   );
 
-  // 3. Calcular egresos mensuales
+  // 3. Calcular egresos mensuales (ocultando fijos futuros si está activo)
   const totalGastos = Array(12).fill(0).map((_, m) => {
     let sum = 0;
-    Object.values(yearlyCashflow.gastos || {}).forEach(arr => sum += (arr[m] || 0));
+    Object.entries(yearlyCashflow.gastos || {}).forEach(([cat, arr]) => {
+      const isFutureFixed = hideFutureFixed && m > currentMonthIdx && isFixedExpense(cat);
+      sum += isFutureFixed ? 0 : (arr[m] || 0);
+    });
     return sum;
   });
 
@@ -108,7 +146,6 @@ export default function CashFlowModule() {
   const anualNeto = anualIngresos - anualGastos;
   const saldoFinalProyectado = saldosFinales[11];
 
-
   const exportToCSV = () => {
     const visibleMonthsList = MONTHS.slice(startMonthIdx);
     const headers = ['Concepto', ...visibleMonthsList];
@@ -127,7 +164,11 @@ export default function CashFlowModule() {
     
     allExpenseCategories.forEach(cat => {
       const values = yearlyCashflow.gastos[cat] || Array(12).fill(0);
-      rows.push([cat, ...values.slice(startMonthIdx).map(v => Math.round(v))]);
+      const mappedValues = values.map((v, m) => {
+        const isFutureFixed = hideFutureFixed && m > currentMonthIdx && isFixedExpense(cat);
+        return isFutureFixed ? 0 : v;
+      });
+      rows.push([cat, ...mappedValues.slice(startMonthIdx).map(v => Math.round(v))]);
     });
     rows.push(['Total Gastos', ...totalGastos.slice(startMonthIdx).map(v => Math.round(v))]);
     rows.push([]);
@@ -149,8 +190,10 @@ export default function CashFlowModule() {
     document.body.removeChild(link);
   };
 
+  const nextMonthName = currentMonthIdx < 11 ? MONTHS[currentMonthIdx + 1] : '';
+
   return (
-    <div className="space-y-8 text-slate-900">
+    <div className="space-y-8 text-slate-900 animate-fade-in">
       
       {/* Cabecera con selector y exportación */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
@@ -159,19 +202,38 @@ export default function CashFlowModule() {
             <Calendar size={13} className="animate-pulse" />
             Periodo Financiero Anual: {currentYear}
           </span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide text-[10px]">Mes de Inicio:</span>
-            <select
-              value={startMonthIdx}
-              onChange={handleStartMonthChange}
-              className="bg-white border border-slate-200 rounded-xl p-1.5 px-3 text-slate-700 text-xs font-extrabold focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm cursor-pointer"
-            >
-              {MONTHS.map((m, idx) => (
-                <option key={idx} value={idx}>{m}</option>
-              ))}
-            </select>
+
+          <div className="flex flex-wrap items-center gap-4 bg-white p-1.5 px-3 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wide text-[10px]">Mes de Inicio:</span>
+              <select
+                value={startMonthIdx}
+                onChange={handleStartMonthChange}
+                className="bg-slate-50 border border-slate-200 rounded-lg p-1 px-2 text-slate-700 text-xs font-extrabold focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
+              >
+                {MONTHS.map((m, idx) => (
+                  <option key={idx} value={idx}>{m}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="hidden md:block h-4 w-[1px] bg-slate-200"></div>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideFutureFixed}
+                onChange={handleToggleHideFutureFixed}
+                className="sr-only peer"
+              />
+              <div className="relative w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-650"></div>
+              <span className="text-xs font-extrabold text-slate-600 text-[10px] uppercase tracking-wide">
+                Mirada al Presente (Ocultar fijos futuros)
+              </span>
+            </label>
           </div>
         </div>
+
         <button 
           onClick={exportToCSV}
           className="flex items-center justify-center gap-2 bg-gradient-to-r from-slate-800 to-slate-950 hover:from-slate-900 hover:to-black text-white px-5 py-3 rounded-xl transition-all duration-300 shadow-md hover:shadow-lg text-xs font-extrabold tracking-wider uppercase"
@@ -180,6 +242,19 @@ export default function CashFlowModule() {
           Exportar CSV Financiero
         </button>
       </div>
+
+      {/* Banner de Modo Mirada al Presente */}
+      {hideFutureFixed && (
+        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-start gap-3 text-xs text-indigo-900 shadow-sm animate-in fade-in duration-200">
+          <Info size={18} className="text-indigo-650 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-extrabold mb-0.5">Modo "Mirada al Presente" Activo</p>
+            <p className="text-slate-600 font-normal leading-relaxed">
+              Los gastos fijos proyectados de los meses posteriores a <strong>{MONTHS[currentMonthIdx]}</strong> {currentMonthIdx < 11 ? `(desde ${nextMonthName} en adelante)` : ''} se han establecido en $0 en las proyecciones. Esto te permite evaluar la caja real acumulada de lo que va de año sin estimaciones futuras.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Grid de KPIs Anuales */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -207,7 +282,9 @@ export default function CashFlowModule() {
             </div>
             <p className="text-xl font-extrabold text-slate-800">${fmt(anualGastos)}</p>
           </div>
-          <p className="text-[9px] text-slate-400 mt-2 font-medium">Suma de OPEX e inversiones de CAPEX</p>
+          <p className="text-[9px] text-slate-400 mt-2 font-medium">
+            {hideFutureFixed ? 'Gastos reales históricos + variables futuros' : 'Suma de OPEX e inversiones de CAPEX'}
+          </p>
         </div>
 
         {/* KPI: Flujo Neto Anual */}
@@ -358,9 +435,11 @@ export default function CashFlowModule() {
                     </td>
                     {MONTHS.slice(startMonthIdx).map((_, mIdx) => {
                       const originalIdx = startMonthIdx + mIdx;
+                      const isFutureFixed = hideFutureFixed && originalIdx > currentMonthIdx && isFixedExpense(cat);
+                      const displayVal = isFutureFixed ? 0 : (values[originalIdx] || 0);
                       return (
-                        <td key={originalIdx} className="px-3 py-2 text-right border-l border-slate-200">
-                          {values[originalIdx] > 0 ? `$${fmt(values[originalIdx])}` : '$0'}
+                        <td key={originalIdx} className="px-3 py-2 text-right border-l border-slate-200 font-semibold">
+                          {displayVal > 0 ? `$${fmt(displayVal)}` : '$0'}
                         </td>
                       );
                     })}
