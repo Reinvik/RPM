@@ -175,6 +175,34 @@ export default function NexusRPMDashboard() {
     : (salesTotal > 0 ? 100 : 0);
   const isBreakEven   = salesTotal >= totalCosts;
 
+  // ── Análisis Temporal (día del mes) ──
+  const today        = new Date();
+  const realMonth    = today.getMonth();
+  const realYear     = today.getFullYear();
+  const isCurrentMonth = selectedMonth === realMonth && selectedYear === realYear;
+  const isPastMonth    = selectedYear < realYear || (selectedYear === realYear && selectedMonth < realMonth);
+
+  // Días totales del mes seleccionado
+  const daysInMonth  = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+  // Días transcurridos: si es el mes actual, hoy; si es pasado, el mes completo; si es futuro, 0
+  const daysElapsed  = isCurrentMonth
+    ? today.getDate()
+    : isPastMonth
+      ? daysInMonth
+      : 0;
+  const daysPct      = daysInMonth > 0 ? (daysElapsed / daysInMonth) * 100 : 0;
+
+  // Ritmo diario actual (ventas / días transcurridos)
+  const dailyRate        = daysElapsed > 0 ? salesTotal / daysElapsed : 0;
+  // Ritmo diario requerido para llegar al equilibrio
+  const requiredDailyRate = daysInMonth > 0 ? totalCosts / daysInMonth : 0;
+  // Proyección de ventas a fin de mes
+  const projectedMonthEnd = dailyRate * daysInMonth;
+  // ¿Vamos adelantados o atrasados respecto al tiempo?
+  // cobertura% vs daysPct -> si cobertura > daysPct estamos ahead
+  const paceAhead        = coveragePct >= daysPct;
+  const paceDiff         = Math.abs(coveragePct - daysPct);
+
   // ── Insights del Asesor (useMemo SIEMPRE antes del early return) ──
   const insights = useMemo(() => buildInsights({
     salesTotal, opexTotal, resultado, margenPct,
@@ -346,6 +374,85 @@ export default function NexusRPMDashboard() {
               <span className="font-bold text-slate-800">${fmt(variableCosts)}</span>
             </div>
           </div>
+
+          {/* Análisis temporal — sólo cuando hay datos de días */}
+          {daysElapsed > 0 && (
+            <>
+              {/* Barra de tiempo vs cobertura */}
+              <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  {isCurrentMonth ? `Análisis de Ritmo — Día ${daysElapsed} de ${daysInMonth}` : `Mes completo (${daysInMonth} días)`}
+                </p>
+
+                {/* Doble barra: tiempo y cobertura */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[10px] text-slate-400 font-medium">
+                    <span>Tiempo transcurrido</span>
+                    <span>{daysPct.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-slate-300 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(daysPct, 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[10px] font-medium" style={{ color: isBreakEven ? '#059669' : '#e11d48' }}>
+                    <span>Cobertura de costos</span>
+                    <span>{coveragePct.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${isBreakEven ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 'bg-gradient-to-r from-rose-400 to-rose-500'}`}
+                      style={{ width: `${Math.min(coveragePct, 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Indicador de ritmo */}
+                {isCurrentMonth && (
+                  <div className={`flex items-center gap-2 text-[11px] font-bold px-3 py-2 rounded-lg ${
+                    paceAhead
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  }`}>
+                    {paceAhead
+                      ? <CheckCircle size={13} />
+                      : <AlertTriangle size={13} />
+                    }
+                    {paceAhead
+                      ? `Ritmo adelantado +${paceDiff.toFixed(1)}% respecto al tiempo del mes.`
+                      : `Ritmo atrasado −${paceDiff.toFixed(1)}% respecto al tiempo del mes.`
+                    }
+                  </div>
+                )}
+
+                {/* Fila de métricas de ritmo */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide">Ritmo actual</p>
+                    <p className="text-sm font-black text-slate-800 mt-0.5">${fmt(dailyRate)}</p>
+                    <p className="text-[9px] text-slate-400">por día</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide">Ritmo requerido</p>
+                    <p className="text-sm font-black text-slate-800 mt-0.5">${fmt(requiredDailyRate)}</p>
+                    <p className="text-[9px] text-slate-400">por día</p>
+                  </div>
+                  <div className={`rounded-xl p-2.5 border ${
+                    projectedMonthEnd >= totalCosts
+                      ? 'bg-emerald-50 border-emerald-200'
+                      : 'bg-rose-50 border-rose-200'
+                  }`}>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide">Proyección</p>
+                    <p className={`text-sm font-black mt-0.5 ${
+                      projectedMonthEnd >= totalCosts ? 'text-emerald-700' : 'text-rose-700'
+                    }`}>${fmt(projectedMonthEnd)}</p>
+                    <p className="text-[9px] text-slate-400">fin de mes</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Proyección IVA Mensual */}
