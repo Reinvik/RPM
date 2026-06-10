@@ -7,9 +7,8 @@ import Layout from './components/layout/Layout';
 import ExpensesModule from './components/rpm/ExpensesModule';
 import CashFlowModule from './components/rpm/CashFlowModule';
 import PayrollModule from './components/rpm/PayrollModule';
-import VatModule from './components/rpm/VatModule';
 import PricingModule from './components/rpm/PricingModule';
-import SuppliesModule from './components/rpm/SuppliesModule';
+import HelpModule from './components/rpm/HelpModule';
 
 const AppContent = () => {
   const { session, loading } = useNexusContext();
@@ -29,9 +28,8 @@ const AppContent = () => {
       {currentView === 'expenses' && <ExpensesModule />}
       {currentView === 'cashflow' && <CashFlowModule />}
       {currentView === 'payroll' && <PayrollModule />}
-      {currentView === 'vat' && <VatModule />}
       {currentView === 'pricing' && <PricingModule />}
-      {currentView === 'supplies' && <SuppliesModule />}
+      {currentView === 'help' && <HelpModule />}
       {currentView === 'admin' && <SuperAdminDashboard />}
     </Layout>
   );

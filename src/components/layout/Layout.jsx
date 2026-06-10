@@ -7,10 +7,9 @@ const VIEW_TITLES = {
   dashboard: 'Resumen General',
   expenses: 'Gestión de Egresos y Facturas',
   cashflow: 'Flujo de Caja Anual',
-  vat: 'Cálculo de IVA Mensual',
   payroll: 'Liquidaciones & Personal',
-  pricing: 'Fijación de Precios',
-  supplies: 'Rentabilidad de Insumos',
+  pricing: 'Precios y Rentabilidad',
+  help: 'Centro de Ayuda Financiera',
   admin: 'Panel Super Admin'
 };
 
