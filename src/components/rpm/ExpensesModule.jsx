@@ -12,7 +12,16 @@ import {
   Info,
   Layers,
   Sparkles,
-  Edit2
+  Edit2,
+  Building2,
+  Receipt,
+  CheckCircle2,
+  Clock,
+  UserPlus,
+  X,
+  Search,
+  Mail,
+  Phone
 } from 'lucide-react';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
@@ -41,7 +50,7 @@ const DEFAULT_CAPEX_CATEGORIES = [
 ];
 
 export default function ExpensesModule() {
-  const { data: { expenses }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
+  const { data: { expenses, allExpenses }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
   const { companyId, selectedMonth, selectedYear } = useNexusContext();
   
   const [showForm, setShowForm] = useState(false);
@@ -69,8 +78,43 @@ export default function ExpensesModule() {
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   
-  // Estado para la pestaña activa (OPEX por defecto, priorizándolo sobre CAPEX)
-  const [activeTab, setActiveTab] = useState('OPEX');
+  // Estado para la pestaña activa principal y la sub-pestaña de gastos
+  const [activeTab, setActiveTab] = useState('gastos'); // 'gastos', 'payable', 'proveedores'
+  const [expensesSubTab, setExpensesSubTab] = useState('OPEX'); // 'OPEX' o 'CAPEX'
+
+  // --- NUEVOS ESTADOS DE CUENTAS POR PAGAR Y PROVEEDORES ---
+  const [suppliers, setSuppliers] = useState([]);
+  const [expenseDetails, setExpenseDetails] = useState({});
+  
+  // Modal de proveedores
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [searchSupplier, setSearchSupplier] = useState('');
+  const [editingSupplier, setEditingSupplier] = useState(null);
+  const [newSupplier, setNewSupplier] = useState({
+    nombre: '',
+    rut: '',
+    plazoPagoDias: 30,
+    contactoMail: '',
+    contactoFono: ''
+  });
+
+  // Buscadores
+  const [searchInvoice, setSearchInvoice] = useState('');
+
+  // Formulario de creación: Modo Factura
+  const [isFacturaProveedor, setIsFacturaProveedor] = useState(false);
+  const [selectedSupplierId, setSelectedSupplierId] = useState('');
+  const [numeroFactura, setNumeroFactura] = useState('');
+  const [fechaVencimientoFactura, setFechaVencimientoFactura] = useState('');
+
+
+  // Helper para sumar días a una fecha
+  const addDays = (dateStr, days) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr + 'T00:00:00');
+    date.setDate(date.getDate() + Number(days));
+    return date.toISOString().split('T')[0];
+  };
 
   // Helper para sumar meses a una fecha
   const addMonths = (dateStr, months) => {
@@ -89,6 +133,8 @@ export default function ExpensesModule() {
 
     const total = Number(montoVal);
     const list = [];
+    // Usar la fecha provista o la correspondiente según sea factura o gasto simple
+    const startFecha = fechaVal || (isFacturaProveedor ? fechaVencimientoFactura : fecha);
 
     if (tipoCalculoVal === 'dividir') {
       if (numCuotasVal < 2) return;
@@ -103,7 +149,7 @@ export default function ExpensesModule() {
           id: `cuota-${i}-${Date.now()}-${Math.random()}`,
           numero: i + 1,
           monto: cuotaMonto,
-          fecha: addMonths(fechaVal, i)
+          fecha: addMonths(startFecha, i)
         });
       }
     } else {
@@ -116,7 +162,7 @@ export default function ExpensesModule() {
           id: `cuota-0-${Date.now()}-${Math.random()}`,
           numero: 1,
           monto: total,
-          fecha: fechaVal
+          fecha: startFecha
         });
       } else {
         const cantidadCuotasEnteras = Math.floor(total / valorCuota);
@@ -133,7 +179,7 @@ export default function ExpensesModule() {
             id: `cuota-${i}-${Date.now()}-${Math.random()}`,
             numero: i + 1,
             monto: valorCuota,
-            fecha: addMonths(fechaVal, i)
+            fecha: addMonths(startFecha, i)
           });
         }
         
@@ -142,14 +188,13 @@ export default function ExpensesModule() {
             id: `cuota-${cantidadCuotasEnteras}-${Date.now()}-${Math.random()}`,
             numero: cantidadCuotasEnteras + 1,
             monto: resto,
-            fecha: addMonths(fechaVal, cantidadCuotasEnteras)
+            fecha: addMonths(startFecha, cantidadCuotasEnteras)
           });
         }
       }
     }
     setCuotasList(list);
   };
-
 
   // Manejar el cambio individual de una cuota
   const handleCuotaChange = (index, field, value) => {
@@ -169,6 +214,19 @@ export default function ExpensesModule() {
     }
   };
 
+  // Calcular fecha de vencimiento de factura automáticamente cuando cambia el proveedor o la fecha
+  useEffect(() => {
+    if (!selectedSupplierId || !fecha) return;
+    const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
+    if (selectedSupplier) {
+      const computedVenc = addDays(fecha, selectedSupplier.plazoPagoDias);
+      setFechaVencimientoFactura(computedVenc);
+      if (isCuotasEnabled) {
+        regenerateCuotasList(monto, computedVenc, numCuotas, tipoCalculoCuotas, montoFijoCuota);
+      }
+    }
+  }, [selectedSupplierId, fecha, suppliers]);
+
   // Manejar inicio de la edición de un gasto
   const handleStartEdit = (exp) => {
     setEditingExpense(exp);
@@ -180,6 +238,23 @@ export default function ExpensesModule() {
     setMonto(exp.monto.toString());
     setFecha(exp.fecha);
     setAplicaCreditoIva(exp.aplica_credito_iva);
+    
+    // Si corresponde a una factura de proveedor, precargar datos de factura
+    const detail = expenseDetails[exp.id];
+    if (detail) {
+      setIsFacturaProveedor(true);
+      setSelectedSupplierId(detail.supplierId);
+      // Remover sufijo de cuota del número de factura para edición limpia
+      const cleanNumFactura = detail.numeroFactura.replace(/-C\d+$/, '');
+      setNumeroFactura(cleanNumFactura);
+      setFechaVencimientoFactura(detail.fechaVencimiento);
+    } else {
+      setIsFacturaProveedor(false);
+      setSelectedSupplierId('');
+      setNumeroFactura('');
+      setFechaVencimientoFactura('');
+    }
+
     setIsCuotasEnabled(false);
     setCuotasList([]);
   };
@@ -197,21 +272,105 @@ export default function ExpensesModule() {
     setTipoCalculoCuotas('dividir');
     setMontoFijoCuota('');
     setCuotasList([]);
+    setIsFacturaProveedor(false);
+    setSelectedSupplierId('');
+    setNumeroFactura('');
+    setFechaVencimientoFactura('');
   };
 
-  // Cargar categorías personalizadas desde LocalStorage al iniciar o cambiar de empresa
+  // Cargar Proveedores, Detalles de Facturas y Categorías desde LocalStorage al iniciar o cambiar de empresa
   useEffect(() => {
     if (!companyId) return;
+    const suppliersKey = `nexus_rpm_suppliers_${companyId}`;
+    const detailsKey = `nexus_rpm_expense_details_${companyId}`;
     const opexKey = `nexus_rpm_custom_opex_${companyId}`;
     const capexKey = `nexus_rpm_custom_capex_${companyId}`;
     
+    setSuppliers(JSON.parse(localStorage.getItem(suppliersKey) || '[]'));
+    setExpenseDetails(JSON.parse(localStorage.getItem(detailsKey) || '{}'));
     setCustomOpexCategories(JSON.parse(localStorage.getItem(opexKey) || '[]'));
     setCustomCapexCategories(JSON.parse(localStorage.getItem(capexKey) || '[]'));
   }, [companyId]);
 
+
   // Listas de categorías combinadas
   const opexCategories = [...DEFAULT_OPEX_CATEGORIES, ...customOpexCategories];
   const capexCategories = [...DEFAULT_CAPEX_CATEGORIES, ...customCapexCategories];
+
+  // --- useMemo DE CUENTAS POR PAGAR Y PROVEEDORES ---
+  const invoices = React.useMemo(() => {
+    const list = [];
+    const expensesList = allExpenses || [];
+    expensesList.forEach(exp => {
+      const detail = expenseDetails[exp.id];
+      if (detail) {
+        const supplier = suppliers.find(s => s.id === detail.supplierId);
+        list.push({
+          ...exp,
+          detail,
+          supplierName: supplier ? supplier.nombre : 'Proveedor Desconocido',
+          supplierRut: supplier ? supplier.rut : '',
+          numeroFactura: detail.numeroFactura,
+          fechaVencimiento: detail.fechaVencimiento,
+          estadoPago: detail.estadoPago || 'Pendiente',
+          fechaPagoReal: detail.fechaPagoReal
+        });
+      }
+    });
+    return list.sort((a, b) => new Date(a.fechaVencimiento) - new Date(b.fechaVencimiento));
+  }, [allExpenses, expenseDetails, suppliers]);
+
+  const filteredInvoices = React.useMemo(() => {
+    const q = searchInvoice.toLowerCase().trim();
+    if (!q) return invoices;
+    return invoices.filter(inv => 
+      inv.supplierName.toLowerCase().includes(q) ||
+      inv.numeroFactura.toLowerCase().includes(q) ||
+      inv.categoria.toLowerCase().includes(q)
+    );
+  }, [invoices, searchInvoice]);
+
+  const filteredSuppliers = React.useMemo(() => {
+    const q = searchSupplier.toLowerCase().trim();
+    if (!q) return suppliers;
+    return suppliers.filter(s => 
+      s.nombre.toLowerCase().includes(q) ||
+      s.rut.toLowerCase().includes(q) ||
+      (s.contactoMail && s.contactoMail.toLowerCase().includes(q))
+    );
+  }, [suppliers, searchSupplier]);
+
+  const kpis = React.useMemo(() => {
+    const hoyStr = new Date().toISOString().split('T')[0];
+    const hoy = new Date(hoyStr + 'T00:00:00');
+    
+    let totalPendiente = 0;
+    let vencido = 0;
+    let vence7dias = 0;
+    let vence30dias = 0;
+
+    invoices.forEach(inv => {
+      if (inv.estadoPago === 'Pendiente') {
+        const monto = Number(inv.monto);
+        totalPendiente += monto;
+
+        const venc = new Date(inv.fechaVencimiento + 'T00:00:00');
+        const diffTime = venc - hoy;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays < 0) {
+          vencido += monto;
+        } else if (diffDays <= 7) {
+          vence7dias += monto;
+        } else if (diffDays <= 30) {
+          vence30dias += monto;
+        }
+      }
+    });
+
+    return { totalPendiente, vencido, vence7dias, vence30dias };
+  }, [invoices]);
+
 
   // Clasificar según la categoría (CAPEX explícito y OPEX por fallback resiliente)
   const capex = expenses.filter(e => capexCategories.includes(e.categoria));
@@ -278,6 +437,11 @@ export default function ExpensesModule() {
     }
 
     if (!finalCategoria || !monto) return;
+
+    if (isFacturaProveedor && (!selectedSupplierId || !numeroFactura.trim())) {
+      alert("Por favor selecciona un proveedor e ingresa el número de factura.");
+      return;
+    }
     
     setSaving(true);
     
@@ -285,7 +449,7 @@ export default function ExpensesModule() {
       if (editingExpense) {
         // Modo Edición
         const result = await updateExpense(editingExpense.id, {
-          tipo: recurrencia,
+          tipo: isFacturaProveedor ? 'Variable' : recurrencia,
           categoria: finalCategoria,
           monto: Number(monto),
           fecha,
@@ -293,9 +457,85 @@ export default function ExpensesModule() {
         });
         
         if (result.error) throw result.error;
+
+        // Si es factura, actualizar metadatos locales
+        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        if (isFacturaProveedor) {
+          const updatedDetails = {
+            ...expenseDetails,
+            [editingExpense.id]: {
+              supplierId: selectedSupplierId,
+              numeroFactura: numeroFactura.trim(),
+              fechaVencimiento: fechaVencimientoFactura || addDays(fecha, 30),
+              estadoPago: expenseDetails[editingExpense.id]?.estadoPago || 'Pendiente',
+              fechaPagoReal: expenseDetails[editingExpense.id]?.fechaPagoReal || null
+            }
+          };
+          setExpenseDetails(updatedDetails);
+          localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+        } else {
+          // Si antes era factura y ahora no, remover metadatos
+          if (expenseDetails[editingExpense.id]) {
+            const updatedDetails = { ...expenseDetails };
+            delete updatedDetails[editingExpense.id];
+            setExpenseDetails(updatedDetails);
+            localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+          }
+        }
+        
         setEditingExpense(null);
+      } else if (isFacturaProveedor) {
+        // Modo Registro de Factura de Proveedor
+        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        let tempDetails = { ...expenseDetails };
+
+        if (isCuotasEnabled && cuotasList.length > 0) {
+          // Factura en Cuotas
+          for (const c of cuotasList) {
+            const result = await addExpense({
+              tipo: 'Variable',
+              categoria: `${finalCategoria} (Cuota ${c.numero}/${cuotasList.length})`,
+              monto: Number(c.monto),
+              fecha: c.fecha, // Fecha de la cuota diferida
+              aplica_credito_iva: aplicaCreditoIva
+            });
+            if (result.error) throw result.error;
+
+            const createdExpense = result.data;
+            tempDetails[createdExpense.id] = {
+              supplierId: selectedSupplierId,
+              numeroFactura: `${numeroFactura.trim()}-C${c.numero}`,
+              fechaVencimiento: c.fecha,
+              estadoPago: 'Pendiente',
+              fechaPagoReal: null
+            };
+          }
+        } else {
+          // Factura Única
+          const result = await addExpense({
+            tipo: 'Variable',
+            categoria: finalCategoria,
+            monto: Number(monto),
+            fecha,
+            aplica_credito_iva: aplicaCreditoIva
+          });
+          if (result.error) throw result.error;
+
+          const createdExpense = result.data;
+          tempDetails[createdExpense.id] = {
+            supplierId: selectedSupplierId,
+            numeroFactura: numeroFactura.trim(),
+            fechaVencimiento: fechaVencimientoFactura || addDays(fecha, 30),
+            estadoPago: 'Pendiente',
+            fechaPagoReal: null
+          };
+        }
+
+        // Guardar acumulado en localStorage
+        setExpenseDetails(tempDetails);
+        localStorage.setItem(detailsKey, JSON.stringify(tempDetails));
       } else if (isCuotasEnabled && cuotasList.length > 0) {
-        // Modo Registro por Cuotas
+        // Modo Registro por Cuotas Egreso Simple
         for (const c of cuotasList) {
           const result = await addExpense({
             tipo: 'Variable',
@@ -332,6 +572,10 @@ export default function ExpensesModule() {
       setTipoCalculoCuotas('dividir');
       setMontoFijoCuota('');
       setCuotasList([]);
+      setIsFacturaProveedor(false);
+      setSelectedSupplierId('');
+      setNumeroFactura('');
+      setFechaVencimientoFactura('');
     } catch (err) {
       console.error(err);
       alert("Error al guardar egreso: " + (err.message || err));
@@ -340,22 +584,115 @@ export default function ExpensesModule() {
     }
   };
 
+  // --- HANDLERS PARA PROVEEDORES ---
+  const handleSaveSupplier = (e) => {
+    e.preventDefault();
+    if (!newSupplier.nombre.trim()) return;
+
+    const suppliersKey = `nexus_rpm_suppliers_${companyId}`;
+    let updatedSuppliers;
+
+    if (editingSupplier) {
+      updatedSuppliers = suppliers.map(s => s.id === editingSupplier.id ? { ...newSupplier, id: editingSupplier.id } : s);
+      setEditingSupplier(null);
+    } else {
+      const id = `prov-${Date.now()}`;
+      updatedSuppliers = [...suppliers, { ...newSupplier, id }];
+    }
+    
+    setSuppliers(updatedSuppliers);
+    localStorage.setItem(suppliersKey, JSON.stringify(updatedSuppliers));
+    
+    // Resetear formulario
+    setNewSupplier({
+      nombre: '',
+      rut: '',
+      plazoPagoDias: 30,
+      contactoMail: '',
+      contactoFono: ''
+    });
+    setShowSupplierModal(false);
+  };
+
+  const handleDeleteSupplier = (id) => {
+    const selected = suppliers.find(s => s.id === id);
+    if (!selected) return;
+
+    // Verificar si el proveedor tiene facturas asociadas en el sistema global
+    const tieneFacturas = allExpenses.some(exp => expenseDetails[exp.id]?.supplierId === id);
+    if (tieneFacturas) {
+      alert(`No se puede eliminar al proveedor "${selected.nombre}" porque tiene facturas asociadas en el sistema.`);
+      return;
+    }
+
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar al proveedor "${selected.nombre}"?`)) return;
+
+    const suppliersKey = `nexus_rpm_suppliers_${companyId}`;
+    const updated = suppliers.filter(s => s.id !== id);
+    setSuppliers(updated);
+    localStorage.setItem(suppliersKey, JSON.stringify(updated));
+  };
+
+  // --- HANDLER PARA REGISTRAR PAGO DE FACTURA ---
+  const handleRegisterPayment = async (expId) => {
+    const detail = expenseDetails[expId];
+    if (!detail) return;
+
+    if (!window.confirm("¿Confirmas que deseas registrar el pago de esta factura hoy?")) return;
+
+    const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+    const updatedDetails = {
+      ...expenseDetails,
+      [expId]: {
+        ...detail,
+        estadoPago: 'Pagado',
+        fechaPagoReal: new Date().toISOString().split('T')[0]
+      }
+    };
+
+    setExpenseDetails(updatedDetails);
+    localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+  };
+
   const handleDelete = async (exp) => {
     const inherited = isInherited(exp);
+    const hasDetails = !!expenseDetails[exp.id];
+    
     const confirmMessage = inherited 
       ? `⚠️ ATENCIÓN: Este es un gasto fijo recurrente heredado de ${getOriginalMonthName(exp.fecha)}.\n\nSi lo eliminas, se borrará de forma permanente de ESTE y TODOS los meses posteriores.\n\n¿Estás seguro de que deseas eliminar este gasto recurrente?`
-      : `¿Estás seguro de que deseas eliminar el gasto "${exp.categoria}" por $${fmt(exp.monto)}?`;
+      : hasDetails
+        ? `¿Estás seguro de que deseas eliminar la factura N° ${expenseDetails[exp.id].numeroFactura} por $${fmt(exp.monto)}?`
+        : `¿Estás seguro de que deseas eliminar el gasto "${exp.categoria}" por $${fmt(exp.monto)}?`;
 
     if (!window.confirm(confirmMessage)) return;
 
     setDeletingId(exp.id);
     try {
       await deleteExpense(exp.id);
-    } catch (err) {
-      console.error(err);
+      
+      // Eliminar también de los detalles locales si corresponde
+      if (hasDetails) {
+        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        const updated = { ...expenseDetails };
+        delete updated[exp.id];
+        setExpenseDetails(updated);
+        localStorage.setItem(detailsKey, JSON.stringify(updated));
+      }
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handleStartEditSupplier = (supplier) => {
+    setEditingSupplier(supplier);
+    setNewSupplier({
+      nombre: supplier.nombre,
+      rut: supplier.rut,
+      plazoPagoDias: supplier.plazoPagoDias,
+      contactoMail: supplier.contactoMail || '',
+      contactoFono: supplier.contactoFono || ''
+    });
+    setShowSupplierModal(true);
   };
 
   const fmt = (num) => Math.round(num).toLocaleString('es-CL');
@@ -376,7 +713,7 @@ export default function ExpensesModule() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <p className="text-slate-500 text-sm">
-            Gestión estructurada de gastos de operación e inversiones, clasificados por recurrencia.
+            Gestión estructurada y unificada de egresos, facturas de proveedores y cuentas por pagar.
           </p>
         </div>
         <button 
@@ -393,12 +730,11 @@ export default function ExpensesModule() {
           }`}
         >
           <PlusCircle size={18} />
-          {showForm ? 'Cerrar Formulario' : 'Registrar Nuevo Egreso'}
+          {showForm ? 'Cerrar Formulario' : 'Registrar Nuevo Egreso / Factura'}
         </button>
       </div>
 
-
-      {/* Formulario de Registro */}
+      {/* Formulario de Registro (Creación) */}
       {showForm && !editingExpense && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xl mb-8 transition-all duration-300 animate-fade-in relative overflow-hidden">
           <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-blue-500 to-indigo-500"></div>
@@ -409,7 +745,29 @@ export default function ExpensesModule() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               
-              {/* Clasificación (OPEX por defecto) */}
+              {/* Tipo de Registro (Es Factura de Proveedor) */}
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Registro</label>
+                <label className="flex items-center gap-3 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 p-3 py-2 rounded-xl border border-slate-200 h-[46px] transition-colors">
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 bg-white shadow-sm cursor-pointer"
+                    checked={isFacturaProveedor}
+                    onChange={(e) => {
+                      setIsFacturaProveedor(e.target.checked);
+                      if (e.target.checked) {
+                        setRecurrencia('Variable');
+                      }
+                    }}
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-700 block">Factura de Proveedor</span>
+                    <span className="text-[9px] text-slate-400 block font-semibold">Registra cuenta por pagar</span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Clasificación */}
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Clasificación</label>
                 <select
@@ -425,34 +783,106 @@ export default function ExpensesModule() {
                 </select>
               </div>
 
-              {/* Recurrencia (Fijo vs Variable) */}
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Recurrencia</label>
-                <div className="flex bg-slate-100 p-1 rounded-xl">
-                  <button
-                    type="button"
-                    onClick={() => setRecurrencia('Variable')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                      recurrencia === 'Variable' 
-                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Variable (Único del mes)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRecurrencia('Fijo')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                      recurrencia === 'Fijo' 
-                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Fijo (Repetitivo mensual)
-                  </button>
+              {/* Recurrencia (Solo si no es Factura) */}
+              {!isFacturaProveedor ? (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Recurrencia</label>
+                  <div className="flex bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setRecurrencia('Variable')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                        recurrencia === 'Variable' 
+                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Variable (Único)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecurrencia('Fijo')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                        recurrencia === 'Fijo' 
+                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Fijo (Mensual)
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Si es Factura, mostramos el Proveedor */
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Proveedor</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedSupplierId}
+                      onChange={(e) => setSelectedSupplierId(e.target.value)}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
+                      required={isFacturaProveedor}
+                    >
+                      <option value="">Selecciona proveedor</option>
+                      {suppliers.map(s => (
+                        <option key={s.id} value={s.id}>{s.nombre} ({s.rut})</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingSupplier(null);
+                        setNewSupplier({
+                          nombre: '',
+                          rut: '',
+                          plazoPagoDias: 30,
+                          contactoMail: '',
+                          contactoFono: ''
+                        });
+                        setShowSupplierModal(true);
+                      }}
+                      className="bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold px-3 py-2 rounded-xl border border-blue-200 transition-colors flex items-center gap-1.5 shrink-0"
+                      title="Crear nuevo proveedor"
+                    >
+                      <UserPlus size={16} />
+                      <span>Nuevo</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Campos condicionales adicionales para Factura */}
+              {isFacturaProveedor && (
+                <>
+                  {/* Número de Factura */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Número de Factura</label>
+                    <input
+                      type="text"
+                      value={numeroFactura}
+                      onChange={(e) => setNumeroFactura(e.target.value)}
+                      placeholder="Ej: 10452"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
+                      required={isFacturaProveedor}
+                    />
+                  </div>
+                  
+                  {/* Fecha de Vencimiento Factura */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Fecha de Vencimiento</label>
+                    <input
+                      type="date"
+                      value={fechaVencimientoFactura}
+                      onChange={(e) => {
+                        setFechaVencimientoFactura(e.target.value);
+                        if (isCuotasEnabled) regenerateCuotasList(monto, e.target.value, numCuotas, tipoCalculoCuotas, montoFijoCuota);
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
+                      required={isFacturaProveedor}
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Categoría */}
               <div>
@@ -463,8 +893,8 @@ export default function ExpensesModule() {
                       type="text"
                       value={newCategoryName}
                       onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="Ej: Arriendo, Isapre, etc."
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder="Ej: Insumos, Arriendo, etc."
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
                       required
                       autoFocus
                     />
@@ -475,7 +905,7 @@ export default function ExpensesModule() {
                         setNewCategoryName('');
                         setCategoria('');
                       }}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-200 transition-colors"
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold px-3 py-2.5 rounded-xl border border-slate-200 transition-colors"
                     >
                       Cancelar
                     </button>
@@ -490,7 +920,7 @@ export default function ExpensesModule() {
                         setCategoria(e.target.value);
                       }
                     }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
                     required
                   >
                     <option value="">Selecciona una categoría</option>
@@ -504,7 +934,7 @@ export default function ExpensesModule() {
 
               {/* Monto */}
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Monto del Egreso ($)</label>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Monto ($)</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-2.5 text-slate-400 font-bold">$</span>
                   <input
@@ -512,7 +942,7 @@ export default function ExpensesModule() {
                     value={monto}
                     onChange={(e) => {
                       setMonto(e.target.value);
-                      if (isCuotasEnabled) regenerateCuotasList(e.target.value, fecha, numCuotas, tipoCalculoCuotas, montoFijoCuota);
+                      if (isCuotasEnabled) regenerateCuotasList(e.target.value, isFacturaProveedor ? fechaVencimientoFactura : fecha, numCuotas, tipoCalculoCuotas, montoFijoCuota);
                     }}
                     placeholder="Ej: 150000"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-8 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
@@ -521,24 +951,26 @@ export default function ExpensesModule() {
                 </div>
               </div>
 
-              {/* Fecha */}
+              {/* Fecha (Emisión para Facturas, Registro para egresos normales) */}
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Fecha de Registro / Inicio</label>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">
+                  {isFacturaProveedor ? 'Fecha de Emisión Factura' : 'Fecha de Registro / Inicio'}
+                </label>
                 <input
                   type="date"
                   value={fecha}
                   onChange={(e) => {
                     setFecha(e.target.value);
-                    if (isCuotasEnabled) regenerateCuotasList(monto, e.target.value, numCuotas, tipoCalculoCuotas, montoFijoCuota);
+                    if (isCuotasEnabled) regenerateCuotasList(monto, isFacturaProveedor ? fechaVencimientoFactura : e.target.value, numCuotas, tipoCalculoCuotas, montoFijoCuota);
                   }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
                   required
                 />
               </div>
 
-              {/* IVA Crédito Checkbox */}
+              {/* IVA Checkbox */}
               <div className="flex items-center">
-                <label className="flex items-center gap-3 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 p-3 rounded-xl border border-slate-200 w-full transition-colors">
+                <label className="flex items-center gap-3 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 p-3 rounded-xl border border-slate-200 w-full transition-colors h-[46px]">
                   <input 
                     type="checkbox" 
                     className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 bg-white"
@@ -547,7 +979,7 @@ export default function ExpensesModule() {
                   />
                   <div>
                     <span className="text-xs font-bold text-slate-700 block">Aplica Crédito IVA</span>
-                    <span className="text-[10px] text-slate-400 block">Descuenta IVA débito (19%)</span>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Descuenta IVA débito (19%)</span>
                   </div>
                 </label>
               </div>
@@ -576,7 +1008,7 @@ export default function ExpensesModule() {
                       onChange={(e) => {
                         setIsCuotasEnabled(e.target.checked);
                         if (e.target.checked) {
-                          regenerateCuotasList(monto, fecha, numCuotas, tipoCalculoCuotas, montoFijoCuota, true);
+                          regenerateCuotasList(monto, isFacturaProveedor ? fechaVencimientoFactura : fecha, numCuotas, tipoCalculoCuotas, montoFijoCuota, true);
                         } else {
                           setCuotasList([]);
                         }
@@ -595,7 +1027,7 @@ export default function ExpensesModule() {
                           type="button"
                           onClick={() => {
                             setTipoCalculoCuotas('dividir');
-                            regenerateCuotasList(monto, fecha, numCuotas, 'dividir', montoFijoCuota);
+                            regenerateCuotasList(monto, isFacturaProveedor ? fechaVencimientoFactura : fecha, numCuotas, 'dividir', montoFijoCuota);
                           }}
                           className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
                             tipoCalculoCuotas === 'dividir'
@@ -609,7 +1041,7 @@ export default function ExpensesModule() {
                           type="button"
                           onClick={() => {
                             setTipoCalculoCuotas('monto_fijo');
-                            regenerateCuotasList(monto, fecha, numCuotas, 'monto_fijo', montoFijoCuota);
+                            regenerateCuotasList(monto, isFacturaProveedor ? fechaVencimientoFactura : fecha, numCuotas, 'monto_fijo', montoFijoCuota);
                           }}
                           className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
                             tipoCalculoCuotas === 'monto_fijo'
@@ -632,7 +1064,7 @@ export default function ExpensesModule() {
                             onChange={(e) => {
                               const val = Math.max(2, Number(e.target.value));
                               setNumCuotas(val);
-                              regenerateCuotasList(monto, fecha, val, tipoCalculoCuotas, montoFijoCuota);
+                              regenerateCuotasList(monto, isFacturaProveedor ? fechaVencimientoFactura : fecha, val, tipoCalculoCuotas, montoFijoCuota);
                             }}
                             className="w-14 bg-white border border-slate-200 rounded-lg p-1 text-center text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
                           />
@@ -648,7 +1080,7 @@ export default function ExpensesModule() {
                               value={montoFijoCuota} 
                               onChange={(e) => {
                                 setMontoFijoCuota(e.target.value);
-                                regenerateCuotasList(monto, fecha, numCuotas, tipoCalculoCuotas, e.target.value);
+                                regenerateCuotasList(monto, isFacturaProveedor ? fechaVencimientoFactura : fecha, numCuotas, tipoCalculoCuotas, e.target.value);
                               }}
                               className="w-24 bg-white border border-slate-200 rounded-lg p-1 pl-4.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none"
                             />
@@ -681,13 +1113,13 @@ export default function ExpensesModule() {
                               type="date" 
                               value={cuota.fecha} 
                               onChange={(e) => handleCuotaChange(idx, 'fecha', e.target.value)}
-                              className="bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none"
+                              className="bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-xs text-slate-600 focus:ring-2 focus:ring-blue-500 outline-none animate-fade-in"
                             />
                           </div>
                         </div>
                       ))}
                     </div>
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 flex justify-between items-center text-xs font-bold text-blue-800">
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3 flex justify-between items-center text-xs font-bold text-blue-800 animate-fade-in">
                       <span>Total acumulado en cuotas:</span>
                       <span>${Number(monto || 0).toLocaleString('es-CL')}</span>
                     </div>
@@ -713,7 +1145,7 @@ export default function ExpensesModule() {
               <button
                 type="submit"
                 disabled={saving}
-                className="px-6 py-2.5 rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                className="px-6 py-2.5 rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold"
               >
                 {saving ? 'Guardando...' : 'Guardar Egreso'}
               </button>
@@ -735,10 +1167,7 @@ export default function ExpensesModule() {
               className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 transition-colors p-1 hover:bg-slate-100 rounded-lg"
               title="Cerrar ventana"
             >
-              <span className="sr-only">Cerrar</span>
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X size={18} />
             </button>
 
             {/* Cabecera */}
@@ -759,6 +1188,28 @@ export default function ExpensesModule() {
               <form id="edit-expense-form" onSubmit={handleSubmit} className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   
+                  {/* Tipo de Registro (Es Factura) */}
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Registro</label>
+                    <label className="flex items-center gap-3 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 p-3.5 rounded-xl border border-slate-200 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 bg-white shadow-sm"
+                        checked={isFacturaProveedor}
+                        onChange={(e) => {
+                          setIsFacturaProveedor(e.target.checked);
+                          if (e.target.checked) {
+                            setRecurrencia('Variable');
+                          }
+                        }}
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-slate-700 block">Factura de Proveedor</span>
+                        <span className="text-[10px] text-slate-400 block font-semibold">Vincula a cuentas por pagar</span>
+                      </div>
+                    </label>
+                  </div>
+
                   {/* Clasificación */}
                   <div>
                     <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Clasificación</label>
@@ -775,34 +1226,103 @@ export default function ExpensesModule() {
                     </select>
                   </div>
 
-                  {/* Recurrencia */}
-                  <div>
-                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Recurrencia</label>
-                    <div className="flex bg-slate-100 p-1 rounded-xl">
-                      <button
-                        type="button"
-                        onClick={() => setRecurrencia('Variable')}
-                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                          recurrencia === 'Variable' 
-                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        Variable (Único)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRecurrencia('Fijo')}
-                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                          recurrencia === 'Fijo' 
-                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        Fijo (Mensual)
-                      </button>
+                  {/* Recurrencia (Solo si no es Factura) */}
+                  {!isFacturaProveedor ? (
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Recurrencia</label>
+                      <div className="flex bg-slate-100 p-1 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => setRecurrencia('Variable')}
+                          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                            recurrencia === 'Variable' 
+                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Variable (Único)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRecurrencia('Fijo')}
+                          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                            recurrencia === 'Fijo' 
+                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Fijo (Mensual)
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    /* Si es Factura, mostramos el Proveedor */
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Proveedor</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={selectedSupplierId}
+                          onChange={(e) => setSelectedSupplierId(e.target.value)}
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all font-semibold"
+                          required={isFacturaProveedor}
+                        >
+                          <option value="">Selecciona proveedor</option>
+                          {suppliers.map(s => (
+                            <option key={s.id} value={s.id}>{s.nombre} ({s.rut})</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingSupplier(null);
+                            setNewSupplier({
+                              nombre: '',
+                              rut: '',
+                              plazoPagoDias: 30,
+                              contactoMail: '',
+                              contactoFono: ''
+                            });
+                            setShowSupplierModal(true);
+                          }}
+                          className="bg-amber-50 hover:bg-amber-100 text-amber-600 text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 transition-colors flex items-center gap-1.5 shrink-0"
+                          title="Crear nuevo proveedor"
+                        >
+                          <UserPlus size={16} />
+                          <span>Nuevo</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Campos condicionales adicionales para Factura */}
+                  {isFacturaProveedor && (
+                    <>
+                      {/* Número de Factura */}
+                      <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Número de Factura</label>
+                        <input
+                          type="text"
+                          value={numeroFactura}
+                          onChange={(e) => setNumeroFactura(e.target.value)}
+                          placeholder="Ej: 10452"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all font-semibold"
+                          required={isFacturaProveedor}
+                        />
+                      </div>
+                      
+                      {/* Fecha de Vencimiento Factura */}
+                      <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Fecha de Vencimiento</label>
+                        <input
+                          type="date"
+                          value={fechaVencimientoFactura}
+                          onChange={(e) => setFechaVencimientoFactura(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all font-semibold"
+                          required={isFacturaProveedor}
+                        />
+                      </div>
+                    </>
+                  )}
 
                   {/* Categoría */}
                   <div className="sm:col-span-2">
@@ -813,8 +1333,8 @@ export default function ExpensesModule() {
                           type="text"
                           value={newCategoryName}
                           onChange={(e) => setNewCategoryName(e.target.value)}
-                          placeholder="Ej: Arriendo, Isapre, etc."
-                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                          placeholder="Ej: Insumos, Arriendo, etc."
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all font-semibold"
                           required
                           autoFocus
                         />
@@ -840,7 +1360,7 @@ export default function ExpensesModule() {
                             setCategoria(e.target.value);
                           }
                         }}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all font-semibold"
                         required
                       >
                         <option value="">Selecciona una categoría</option>
@@ -875,14 +1395,14 @@ export default function ExpensesModule() {
                       type="date"
                       value={fecha}
                       onChange={(e) => setFecha(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all font-semibold"
                       required
                     />
                   </div>
 
                   {/* IVA Checkbox */}
                   <div className="sm:col-span-2 flex items-center">
-                    <label className="flex items-center gap-3 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 p-3.5 rounded-xl border border-slate-200 w-full transition-colors">
+                    <label className="flex items-center gap-3 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 p-3.5 rounded-xl border border-slate-200 w-full transition-colors h-[46px]">
                       <input 
                         type="checkbox" 
                         className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 bg-white"
@@ -891,7 +1411,7 @@ export default function ExpensesModule() {
                       />
                       <div>
                         <span className="text-xs font-bold text-slate-700 block">Aplica Crédito IVA</span>
-                        <span className="text-[10px] text-slate-400 block">Descuenta IVA débito (19%)</span>
+                        <span className="text-[10px] text-slate-400 block font-semibold">Descuenta IVA (19%)</span>
                       </div>
                     </label>
                   </div>
@@ -923,7 +1443,7 @@ export default function ExpensesModule() {
                 type="submit"
                 form="edit-expense-form"
                 disabled={saving}
-                className="px-6 py-2.5 rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+                className="px-6 py-2.5 rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold"
               >
                 {saving ? 'Guardando...' : 'Guardar Cambios'}
               </button>
@@ -932,132 +1452,587 @@ export default function ExpensesModule() {
         </div>
       )}
 
-      {/* Resumen Cards (Estructura Premium Priorizando OPEX) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        
-        {/* OPEX Summary Card (Destacado - 2 Columnas) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between lg:col-span-2">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-3xl"></div>
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Gastos Operativos (OPEX)</span>
-              <TrendingUp className="text-rose-500" size={20} />
-            </div>
-            <div className="text-3xl font-black text-slate-800">${fmt(totalOpex)}</div>
-          </div>
-          <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-slate-100 text-xs font-bold text-slate-500">
-            <div>
-              <span className="block text-[10px] text-slate-400 uppercase">Gastos Fijos</span>
-              <span className="text-slate-700 text-sm font-extrabold">${fmt(opexFijos)}</span>
-            </div>
-            <div>
-              <span className="block text-[10px] text-slate-400 uppercase">Gastos Variables</span>
-              <span className="text-slate-700 text-sm font-extrabold">${fmt(opexVariables)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* IVA Summary Card */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl"></div>
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Crédito IVA Recuperable</span>
-              <Layers className="text-emerald-500" size={18} />
-            </div>
-            <div className="text-2xl font-black text-emerald-600">${fmt(totalIvaCredito)}</div>
-          </div>
-          <p className="text-[10px] text-slate-400 font-medium mt-4 pt-3 border-t border-slate-100">
-            19% recuperable de egresos afectos a impuestos de este periodo.
-          </p>
-        </div>
-
-        {/* CAPEX Summary Card (Diseño secundario / minimalista) */}
-        <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-200/60 shadow-sm relative overflow-hidden flex flex-col justify-between opacity-85 hover:opacity-100 transition-opacity">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl"></div>
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Activos / CAPEX</span>
-              <TrendingDown className="text-slate-400" size={16} />
-            </div>
-            <div className="text-xl font-bold text-slate-600">${fmt(totalCapex)}</div>
-          </div>
-          <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-200/50 text-[10px] font-semibold text-slate-400">
-            <div>
-              <span className="block text-[9px] uppercase">Fijo</span>
-              <span className="text-slate-500 font-bold">${fmt(capexFijos)}</span>
-            </div>
-            <div>
-              <span className="block text-[9px] uppercase">Variable</span>
-              <span className="text-slate-500 font-bold">${fmt(capexVariables)}</span>
-            </div>
-          </div>
-        </div>
-
+      {/* Barra de Navegación Principal */}
+      <div className="flex border-b border-slate-200 bg-slate-50/50 p-1 rounded-xl gap-1.5 max-w-fit shadow-sm">
+        <button
+          onClick={() => setActiveTab('gastos')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'gastos'
+              ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
+              : 'text-slate-500 hover:text-slate-850'
+          }`}
+        >
+          <Receipt size={15} />
+          Gastos del Período
+        </button>
+        <button
+          onClick={() => setActiveTab('payable')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'payable'
+              ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
+              : 'text-slate-500 hover:text-slate-850'
+          }`}
+        >
+          <TrendingDown size={15} />
+          Cuentas por Pagar
+          {kpis.totalPendiente > 0 && (
+            <span className="ml-1 text-[10px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full font-bold">
+              ${fmt(kpis.totalPendiente)}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('proveedores')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'proveedores'
+              ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
+              : 'text-slate-500 hover:text-slate-850'
+          }`}
+        >
+          <Building2 size={15} />
+          Gestión de Proveedores
+          <span className="ml-1 text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">
+            {suppliers.length}
+          </span>
+        </button>
       </div>
 
-      {/* Pestañas de Navegación de Detalles */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        
-        {/* Barra de Tabs */}
-        <div className="flex border-b border-slate-200 bg-slate-50/50 p-2 gap-2">
-          <button
-            onClick={() => setActiveTab('OPEX')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold transition-all ${
-              activeTab === 'OPEX'
-                ? 'bg-white text-slate-800 shadow-sm border border-slate-200/80'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-            Gastos Operacionales (OPEX)
-            <span className="ml-1 text-xs bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full font-bold">
-              ${fmt(totalOpex)}
-            </span>
-          </button>
+      {/* CONTENIDO DE PESTAÑA: GASTOS DEL PERIODO */}
+      {activeTab === 'gastos' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Resumen Cards (OPEX, IVA, CAPEX) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            
+            {/* OPEX Summary Card (Destacado - 2 Columnas) */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between lg:col-span-2">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-3xl"></div>
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Gastos Operativos (OPEX)</span>
+                  <TrendingUp className="text-rose-500" size={20} />
+                </div>
+                <div className="text-3xl font-black text-slate-800">${fmt(totalOpex)}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-slate-100 text-xs font-bold text-slate-500">
+                <div>
+                  <span className="block text-[10px] text-slate-400 uppercase">Gastos Fijos</span>
+                  <span className="text-slate-700 text-sm font-extrabold">${fmt(opexFijos)}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] text-slate-400 uppercase">Gastos Variables</span>
+                  <span className="text-slate-700 text-sm font-extrabold">${fmt(opexVariables)}</span>
+                </div>
+              </div>
+            </div>
 
-          <button
-            onClick={() => setActiveTab('CAPEX')}
-            className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold transition-all ${
-              activeTab === 'CAPEX'
-                ? 'bg-white text-slate-800 shadow-sm border border-slate-200/80'
-                : 'text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-            Inversión / Activos (CAPEX)
-            <span className="ml-1 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">
-              ${fmt(totalCapex)}
-            </span>
-          </button>
-        </div>
+            {/* IVA Summary Card */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl"></div>
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Crédito IVA Recuperable</span>
+                  <Layers className="text-emerald-500" size={18} />
+                </div>
+                <div className="text-2xl font-black text-emerald-600">${fmt(totalIvaCredito)}</div>
+              </div>
+              <p className="text-[10px] text-slate-400 font-medium mt-4 pt-3 border-t border-slate-100">
+                19% recuperable de egresos afectos a impuestos de este periodo.
+              </p>
+            </div>
 
-        {/* Contenido del Tab Activo */}
-        <div className="p-5">
-          {activeTab === 'OPEX' ? (
-            <div className="space-y-3 pr-1">
-              {opex.length === 0 ? (
-                <p className="text-slate-400 text-xs py-12 text-center font-medium">
-                  No hay gastos operacionales registrados en este período.
-                </p>
+            {/* CAPEX Summary Card */}
+            <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-200/60 shadow-sm relative overflow-hidden flex flex-col justify-between opacity-85 hover:opacity-100 transition-opacity">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl"></div>
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Activos / CAPEX</span>
+                  <TrendingDown className="text-slate-400" size={16} />
+                </div>
+                <div className="text-xl font-bold text-slate-600">${fmt(totalCapex)}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-200/50 text-[10px] font-semibold text-slate-400">
+                <div>
+                  <span className="block text-[9px] uppercase">Fijo</span>
+                  <span className="text-slate-500 font-bold">${fmt(capexFijos)}</span>
+                </div>
+                <div>
+                  <span className="block text-[9px] uppercase">Variable</span>
+                  <span className="text-slate-500 font-bold">${fmt(capexVariables)}</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* Listado con Pestañas Internas (OPEX vs CAPEX) */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            
+            {/* Barra de Sub-Tabs */}
+            <div className="flex border-b border-slate-200 bg-slate-50/50 p-2 gap-2">
+              <button
+                onClick={() => setExpensesSubTab('OPEX')}
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold transition-all ${
+                  expensesSubTab === 'OPEX'
+                    ? 'bg-white text-slate-800 shadow-sm border border-slate-200/80'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                Gastos Operacionales (OPEX)
+                <span className="ml-1 text-xs bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full font-bold">
+                  ${fmt(totalOpex)}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setExpensesSubTab('CAPEX')}
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold transition-all ${
+                  expensesSubTab === 'CAPEX'
+                    ? 'bg-white text-slate-800 shadow-sm border border-slate-200/80'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                Inversión / Activos (CAPEX)
+                <span className="ml-1 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">
+                  ${fmt(totalCapex)}
+                </span>
+              </button>
+            </div>
+
+            {/* Contenido de Sub-Tab Activo */}
+            <div className="p-5">
+              {expensesSubTab === 'OPEX' ? (
+                <div className="space-y-3 pr-1">
+                  {opex.length === 0 ? (
+                    <p className="text-slate-400 text-xs py-12 text-center font-medium">
+                      No hay gastos operacionales registrados en este período.
+                    </p>
+                  ) : (
+                    opex.map(exp => renderExpenseRow(exp))
+                  )}
+                </div>
               ) : (
-                opex.map(exp => renderExpenseRow(exp))
+                <div className="space-y-3 pr-1">
+                  {capex.length === 0 ? (
+                    <p className="text-slate-400 text-xs py-12 text-center font-medium">
+                      No hay inversiones de capital (CAPEX) registradas en este período.
+                    </p>
+                  ) : (
+                    capex.map(exp => renderExpenseRow(exp))
+                  )}
+                </div>
               )}
             </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* CONTENIDO DE PESTAÑA: CUENTAS POR PAGAR */}
+      {activeTab === 'payable' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Resumen de KPIs de Deuda */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* KPI Total Pendiente */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-slate-500/5 rounded-full blur-xl"></div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-450 text-[10px] font-extrabold uppercase tracking-wider">Total por Pagar</span>
+                  <DollarSign className="text-slate-500" size={18} />
+                </div>
+                <div className="text-2xl font-black text-slate-800">${fmt(kpis.totalPendiente)}</div>
+              </div>
+              <p className="text-[10px] text-slate-400 font-medium mt-3">
+                Suma total de facturas vigentes por pagar.
+              </p>
+            </div>
+
+            {/* KPI Vencido */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-rose-500/5 rounded-full blur-xl"></div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-450 text-[10px] font-extrabold uppercase tracking-wider">Deuda Vencida</span>
+                  <AlertTriangle className="text-rose-500" size={18} />
+                </div>
+                <div className="text-2xl font-black text-rose-600">${fmt(kpis.vencido)}</div>
+              </div>
+              <p className="text-[10px] text-rose-400 font-medium mt-3">
+                Facturas vencidas que requieren pago inmediato.
+              </p>
+            </div>
+
+            {/* KPI Vence en 7 Días */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/5 rounded-full blur-xl"></div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-450 text-[10px] font-extrabold uppercase tracking-wider">Vence en 7 Días</span>
+                  <Clock className="text-amber-500" size={18} />
+                </div>
+                <div className="text-2xl font-black text-amber-600">${fmt(kpis.vence7dias)}</div>
+              </div>
+              <p className="text-[10px] text-amber-500 font-medium mt-3">
+                Compromisos de pago para esta semana.
+              </p>
+            </div>
+
+            {/* KPI Vence en 30 Días */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/5 rounded-full blur-xl"></div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-450 text-[10px] font-extrabold uppercase tracking-wider">Vence en 30 Días</span>
+                  <Calendar className="text-blue-500" size={18} />
+                </div>
+                <div className="text-2xl font-black text-blue-600">${fmt(kpis.vence30dias)}</div>
+              </div>
+              <p className="text-[10px] text-blue-400 font-medium mt-3">
+                Compromisos de pago para los próximos 30 días.
+              </p>
+            </div>
+          </div>
+
+          {/* Grilla / Listado de Facturas */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Control de Facturas y Vencimientos</h3>
+                <p className="text-xs text-slate-400">Control global e histórico de deudas de proveedores.</p>
+              </div>
+              
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                <input
+                  type="text"
+                  value={searchInvoice}
+                  onChange={(e) => setSearchInvoice(e.target.value)}
+                  placeholder="Buscar por proveedor, factura o categoría..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pl-9 pr-4 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {filteredInvoices.length === 0 ? (
+              <div className="text-slate-400 text-xs py-12 text-center font-medium border border-dashed border-slate-200 rounded-xl">
+                No se encontraron facturas registradas en el sistema.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-150 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                      <th className="py-3 px-4">Proveedor / RUT</th>
+                      <th className="py-3 px-4">Factura N°</th>
+                      <th className="py-3 px-4">Categoría</th>
+                      <th className="py-3 px-4">Fecha Emisión</th>
+                      <th className="py-3 px-4">Vencimiento</th>
+                      <th className="py-3 px-4 text-right">Monto</th>
+                      <th className="py-3 px-4 text-center">Estado</th>
+                      <th className="py-3 px-4 text-center">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {filteredInvoices.map((inv) => {
+                      const hoyStr = new Date().toISOString().split('T')[0];
+                      const esVencido = inv.estadoPago === 'Pendiente' && inv.fechaVencimiento < hoyStr;
+                      
+                      return (
+                        <tr key={inv.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-slate-800 block">{inv.supplierName}</span>
+                            <span className="text-[10px] text-slate-400 block font-semibold">{inv.supplierRut}</span>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono font-bold text-slate-600">{inv.numeroFactura}</td>
+                          <td className="py-3.5 px-4 font-semibold text-slate-500">{inv.categoria}</td>
+                          <td className="py-3.5 px-4 text-slate-500 font-semibold">
+                            {new Date(inv.fecha + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                          </td>
+                          <td className="py-3.5 px-4 font-semibold">
+                            <span className={esVencido ? 'text-red-500 font-bold' : 'text-slate-600'}>
+                              {new Date(inv.fechaVencimiento + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </span>
+                            {esVencido && (
+                              <span className="ml-1 text-[8px] bg-red-50 text-red-600 px-1 py-0.5 rounded font-bold border border-red-150 inline-block uppercase">
+                                Vencido
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-extrabold text-slate-800">${fmt(inv.monto)}</td>
+                          <td className="py-3.5 px-4 text-center">
+                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1 border ${
+                              inv.estadoPago === 'Pagado'
+                                ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                : esVencido
+                                  ? 'bg-rose-50 text-rose-600 border-rose-200'
+                                  : 'bg-amber-50 text-amber-600 border-amber-200'
+                            }`}>
+                              {inv.estadoPago === 'Pagado' ? <CheckCircle2 size={11} /> : <Clock size={11} />}
+                              {inv.estadoPago}
+                            </span>
+                            {inv.estadoPago === 'Pagado' && inv.fechaPagoReal && (
+                              <span className="block text-[9px] text-slate-400 mt-0.5">Pagado: {new Date(inv.fechaPagoReal + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {inv.estadoPago === 'Pendiente' && (
+                                <button
+                                  onClick={() => handleRegisterPayment(inv.id)}
+                                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors flex items-center gap-1 shrink-0"
+                                  title="Registrar Pago de Factura"
+                                >
+                                  <CheckCircle2 size={12} />
+                                  <span>Pagar</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleStartEdit(inv)}
+                                className="text-slate-400 hover:text-blue-500 hover:bg-blue-55 p-1 rounded-lg transition-colors shrink-0"
+                                title="Editar Factura"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(inv)}
+                                className="text-slate-400 hover:text-red-500 hover:bg-red-55 p-1 rounded-lg transition-colors shrink-0"
+                                title="Eliminar Factura"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CONTENIDO DE PESTAÑA: DIRECTORIO DE PROVEEDORES */}
+      {activeTab === 'proveedores' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-5 space-y-4 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-800">Directorio de Proveedores</h3>
+              <p className="text-xs text-slate-400">Administra los plazos de pago y datos de contacto de tus proveedores comerciales.</p>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                <input
+                  type="text"
+                  value={searchSupplier}
+                  onChange={(e) => setSearchSupplier(e.target.value)}
+                  placeholder="Buscar proveedor o RUT..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pl-9 pr-4 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  setEditingSupplier(null);
+                  setNewSupplier({
+                    nombre: '',
+                    rut: '',
+                    plazoPagoDias: 30,
+                    contactoMail: '',
+                    contactoFono: ''
+                  });
+                  setShowSupplierModal(true);
+                }}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <UserPlus size={15} />
+                <span>Nuevo Proveedor</span>
+              </button>
+            </div>
+          </div>
+
+          {filteredSuppliers.length === 0 ? (
+            <div className="text-slate-400 text-xs py-12 text-center font-medium border border-dashed border-slate-200 rounded-xl">
+              No se encontraron proveedores registrados. Haz clic en "Nuevo Proveedor" para comenzar.
+            </div>
           ) : (
-            <div className="space-y-3 pr-1">
-              {capex.length === 0 ? (
-                <p className="text-slate-400 text-xs py-12 text-center font-medium">
-                  No hay inversiones de capital (CAPEX) registradas en este período.
-                </p>
-              ) : (
-                capex.map(exp => renderExpenseRow(exp))
-              )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-150 text-slate-400 font-extrabold uppercase tracking-wider text-[10px]">
+                    <th className="py-3 px-4">Razón Social / Nombre</th>
+                    <th className="py-3 px-4">RUT</th>
+                    <th className="py-3 px-4">Plazo de Pago</th>
+                    <th className="py-3 px-4">Email</th>
+                    <th className="py-3 px-4">Teléfono</th>
+                    <th className="py-3 px-4 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {filteredSuppliers.map((sup) => (
+                    <tr key={sup.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-slate-800">{sup.nombre}</td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-650">{sup.rut}</td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-500">
+                        {sup.plazoPagoDias} días
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-600 font-semibold">
+                        {sup.contactoMail ? (
+                          <a href={`mailto:${sup.contactoMail}`} className="hover:underline flex items-center gap-1 text-blue-600 hover:text-blue-700">
+                            <Mail size={12} className="text-slate-400" />
+                            {sup.contactoMail}
+                          </a>
+                        ) : (
+                          <span className="text-slate-350 italic">No registrado</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-600 font-semibold">
+                        {sup.contactoFono ? (
+                          <span className="flex items-center gap-1">
+                            <Phone size={12} className="text-slate-400" />
+                            {sup.contactoFono}
+                          </span>
+                        ) : (
+                          <span className="text-slate-350 italic">No registrado</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleStartEditSupplier(sup)}
+                            className="bg-slate-50 hover:bg-slate-100 text-slate-500 p-1.5 rounded-lg border border-slate-200 transition-colors"
+                            title="Editar Proveedor"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSupplier(sup.id)}
+                            className="bg-red-50 hover:bg-red-105 text-red-600 p-1.5 rounded-lg border border-red-200 transition-colors"
+                            title="Eliminar Proveedor"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
+      )}
 
-      </div>
+      {/* Modal de Proveedor (Creación / Edición) */}
+      {showSupplierModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-150 shadow-2xl w-full max-w-md relative overflow-hidden transition-all duration-300 transform scale-100 max-h-[95vh] flex flex-col">
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-500 to-indigo-500"></div>
+            
+            {/* Botón Cerrar */}
+            <button 
+              onClick={() => setShowSupplierModal(false)} 
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 transition-colors p-1 hover:bg-slate-100 rounded-lg animate-fade-in"
+            >
+              <X size={18} />
+            </button>
+
+            {/* Cabecera */}
+            <div className="p-6 pb-4 border-b border-slate-100">
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                  <Building2 size={18} />
+                </div>
+                <div>
+                  <span className="block text-slate-800">{editingSupplier ? 'Editar Proveedor' : 'Registrar Nuevo Proveedor'}</span>
+                  <span className="block text-xs text-slate-400 font-normal mt-0.5">Ingresa los datos comerciales del proveedor</span>
+                </div>
+              </h2>
+            </div>
+
+            {/* Formulario */}
+            <form onSubmit={handleSaveSupplier} className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Razón Social / Nombre</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Transportes Acme Ltda."
+                  value={newSupplier.nombre}
+                  onChange={(e) => setNewSupplier({ ...newSupplier, nombre: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">RUT / Identificación Tributaria</label>
+                <input
+                  type="text"
+                  placeholder="Ej: 76.123.456-7"
+                  value={newSupplier.rut}
+                  onChange={(e) => setNewSupplier({ ...newSupplier, rut: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Plazo de Pago (Días de Crédito)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="120"
+                  required
+                  value={newSupplier.plazoPagoDias}
+                  onChange={(e) => setNewSupplier({ ...newSupplier, plazoPagoDias: Number(e.target.value) })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Email de Contacto (Opcional)</label>
+                <input
+                  type="email"
+                  placeholder="Ej: contacto@empresa.com"
+                  value={newSupplier.contactoMail}
+                  onChange={(e) => setNewSupplier({ ...newSupplier, contactoMail: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Teléfono de Contacto (Opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ej: +56 9 1234 5678"
+                  value={newSupplier.contactoFono}
+                  onChange={(e) => setNewSupplier({ ...newSupplier, contactoFono: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all font-semibold"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowSupplierModal(false)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl font-bold text-xs transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-bold text-xs shadow-md transition-all font-bold"
+                >
+                  {editingSupplier ? 'Guardar Cambios' : 'Registrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
@@ -1067,6 +2042,8 @@ export default function ExpensesModule() {
     const isFixed = exp.tipo === 'Fijo';
     const inherited = isInherited(exp);
     const isDeleting = deletingId === exp.id;
+    const detail = expenseDetails[exp.id];
+    const supplier = detail ? suppliers.find(s => s.id === detail.supplierId) : null;
 
     return (
       <div 
@@ -1104,9 +2081,21 @@ export default function ExpensesModule() {
                 IVA (Cred.)
               </span>
             )}
+
+            {/* Badge de Factura si corresponde */}
+            {detail && (
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
+                detail.estadoPago === 'Pagado'
+                  ? 'bg-emerald-50 text-emerald-650 border-emerald-200'
+                  : 'bg-amber-50 text-amber-650 border-amber-200'
+              }`}>
+                <Receipt size={10} className="shrink-0" />
+                Factura N° {detail.numeroFactura} - {supplier ? supplier.nombre : 'Proveedor'} ({detail.estadoPago})
+              </span>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
+          <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 font-semibold">
             <Calendar size={12} />
             <span>
               {inherited 
@@ -1126,8 +2115,8 @@ export default function ExpensesModule() {
             {!inherited && (
               <button
                 onClick={() => handleStartEdit(exp)}
-                className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
-                title="Editar Gasto"
+                className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
+                title="Editar Gasto / Factura"
               >
                 <Edit2 size={15} />
               </button>
@@ -1135,8 +2124,8 @@ export default function ExpensesModule() {
             <button
               onClick={() => handleDelete(exp)}
               disabled={isDeleting}
-              className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
-              title="Eliminar Gasto"
+              className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
+              title="Eliminar Gasto / Factura"
             >
               {isDeleting ? (
                 <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>

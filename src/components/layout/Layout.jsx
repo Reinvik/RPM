@@ -5,13 +5,12 @@ import DateSelector from './DateSelector';
 
 const VIEW_TITLES = {
   dashboard: 'Resumen General',
-  expenses: 'Gastos OPEX / CAPEX',
+  expenses: 'Gestión de Egresos y Facturas',
   cashflow: 'Flujo de Caja Anual',
   vat: 'Cálculo de IVA Mensual',
   payroll: 'Liquidaciones & Personal',
   pricing: 'Fijación de Precios',
   supplies: 'Rentabilidad de Insumos',
-  payable: 'Cuentas por Pagar / Proveedores',
   admin: 'Panel Super Admin'
 };
 

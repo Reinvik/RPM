@@ -9,13 +9,12 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen
 
   const navItems = [
     { id: 'dashboard', label: 'Resumen General', icon: LayoutDashboard },
-    { id: 'expenses', label: 'Gastos OPEX / CAPEX', icon: Settings },
+    { id: 'expenses', label: 'Egresos y Facturas', icon: FileText },
     { id: 'cashflow', label: 'Flujo de Caja Anual', icon: DollarSign },
     { id: 'vat', label: 'Cálculo de IVA Mensual', icon: FileText },
     { id: 'payroll', label: 'Liquidaciones & Personal', icon: Users },
     { id: 'pricing', label: 'Fijación de Precios', icon: Calculator },
     { id: 'supplies', label: 'Rentabilidad Insumos', icon: Percent },
-    { id: 'payable', label: 'Cuentas por Pagar', icon: Truck },
   ];
 
   if (isSuperAdmin) {
