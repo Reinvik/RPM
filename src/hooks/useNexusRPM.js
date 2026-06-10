@@ -17,6 +17,26 @@ export const useNexusRPM = () => {
     yearlyCashflow: { ingresos: { facturas: [], boletas: [] }, gastos: {} }
   });
 
+  // ── Helper: trae TODOS los registros paginando de 1000 en 1000 ──
+  const fetchAllPages = async (queryBuilder) => {
+    const PAGE_SIZE = 1000;
+    let allData = [];
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await queryBuilder.range(from, from + PAGE_SIZE - 1);
+      if (error) {
+        console.error('Error paginando datos:', error);
+        break;
+      }
+      allData = allData.concat(data || []);
+      hasMore = (data || []).length === PAGE_SIZE;
+      from += PAGE_SIZE;
+    }
+    return allData;
+  };
+
   useEffect(() => {
     if (!companyId) return;
 
@@ -45,26 +65,26 @@ export const useNexusRPM = () => {
 
         if (mechError) console.error("Error fetching mechanics:", mechError);
 
-        // 3. Obtener ventas del mes actual de POS (garage_sala_ventas)
-        // Usamos los valores definidos al inicio del hook (líneas 22-23) basados en el contexto global
-        
-        const { data: posSales, error: posError } = await supabase
-          .schema('garage')
-          .from('garage_sala_ventas')
-          .select('total, sold_at, document_type')
-          .eq('company_id', companyId);
+        // 3. Obtener ventas POS (garage_sala_ventas) — PAGINADO
+        const posSales = await fetchAllPages(
+          supabase
+            .schema('garage')
+            .from('garage_sala_ventas')
+            .select('total, sold_at, document_type')
+            .eq('company_id', companyId)
+        );
 
-        if (posError) console.error("Error fetching POS sales:", posError);
+        // 4. Obtener tickets de Taller (garage_tickets) — PAGINADO
+        const ticketSales = await fetchAllPages(
+          supabase
+            .schema('garage')
+            .from('garage_tickets')
+            .select('id, cost, close_date, status, mechanic, mechanic_ids, services, spare_parts, document_type')
+            .eq('company_id', companyId)
+            .in('status', ['Entregado', 'Finalizado'])
+        );
 
-        // 4. Obtener ventas del mes actual de Taller (garage_tickets)
-        const { data: ticketSales, error: ticketError } = await supabase
-          .schema('garage')
-          .from('garage_tickets')
-          .select('id, cost, close_date, status, mechanic, mechanic_ids, services, spare_parts, document_type')
-          .eq('company_id', companyId)
-          .in('status', ['Entregado', 'Finalizado']);
-
-        if (ticketError) console.error("Error fetching ticket sales:", ticketError);
+        console.log(`[useNexusRPM] POS: ${posSales.length} registros | Tickets: ${ticketSales.length} registros`);
 
         // Procesar datos para RPM (Mes actual)
         const expenses = expensesData || [];
