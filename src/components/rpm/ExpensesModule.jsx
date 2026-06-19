@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
+import ConfirmModal from './ConfirmModal';
 
 const DEFAULT_OPEX_CATEGORIES = [
   'Insumo de aseo',
@@ -100,6 +101,21 @@ export default function ExpensesModule() {
 
   // Buscadores
   const [searchInvoice, setSearchInvoice] = useState('');
+
+  // ── Estado del modal de confirmación (reemplaza window.confirm) ──
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    variant: 'warning',
+    confirmText: 'Confirmar',
+    onConfirm: null,
+  });
+  const openConfirm = ({ title, message, variant = 'warning', confirmText = 'Confirmar', onConfirm }) => {
+    setConfirmModal({ isOpen: true, title, message, variant, confirmText, onConfirm });
+  };
+  const closeConfirm = () => setConfirmModal(prev => ({ ...prev, isOpen: false, onConfirm: null }));
+
 
   // Formulario de creación: Modo Factura
   const [isFacturaProveedor, setIsFacturaProveedor] = useState(false);
@@ -625,12 +641,19 @@ export default function ExpensesModule() {
       return;
     }
 
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar al proveedor "${selected.nombre}"?`)) return;
-
-    const suppliersKey = `nexus_rpm_suppliers_${companyId}`;
-    const updated = suppliers.filter(s => s.id !== id);
-    setSuppliers(updated);
-    localStorage.setItem(suppliersKey, JSON.stringify(updated));
+    openConfirm({
+      title: 'Eliminar Proveedor',
+      message: `¿Estás seguro de que deseas eliminar al proveedor "${selected.nombre}"?\nEsta acción no se puede deshacer.`,
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+      onConfirm: () => {
+        const suppliersKey = `nexus_rpm_suppliers_${companyId}`;
+        const updated = suppliers.filter(s => s.id !== id);
+        setSuppliers(updated);
+        localStorage.setItem(suppliersKey, JSON.stringify(updated));
+        closeConfirm();
+      },
+    });
   };
 
   // --- HANDLER PARA REGISTRAR PAGO DE FACTURA ---
@@ -638,20 +661,26 @@ export default function ExpensesModule() {
     const detail = expenseDetails[expId];
     if (!detail) return;
 
-    if (!window.confirm("¿Confirmas que deseas registrar el pago de esta factura hoy?")) return;
-
-    const detailsKey = `nexus_rpm_expense_details_${companyId}`;
-    const updatedDetails = {
-      ...expenseDetails,
-      [expId]: {
-        ...detail,
-        estadoPago: 'Pagado',
-        fechaPagoReal: new Date().toISOString().split('T')[0]
-      }
-    };
-
-    setExpenseDetails(updatedDetails);
-    localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+    openConfirm({
+      title: 'Registrar Pago',
+      message: '¿Confirmas que deseas registrar el pago de esta factura hoy?\nSe marcará como Pagada con la fecha de hoy.',
+      variant: 'success',
+      confirmText: 'Sí, registrar pago',
+      onConfirm: async () => {
+        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        const updatedDetails = {
+          ...expenseDetails,
+          [expId]: {
+            ...detail,
+            estadoPago: 'Pagado',
+            fechaPagoReal: new Date().toISOString().split('T')[0]
+          }
+        };
+        setExpenseDetails(updatedDetails);
+        localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+        closeConfirm();
+      },
+    });
   };
 
   const handleDelete = async (exp) => {
@@ -659,28 +688,33 @@ export default function ExpensesModule() {
     const hasDetails = !!expenseDetails[exp.id];
     
     const confirmMessage = inherited 
-      ? `⚠️ ATENCIÓN: Este es un gasto fijo recurrente heredado de ${getOriginalMonthName(exp.fecha)}.\n\nSi lo eliminas, se borrará de forma permanente de ESTE y TODOS los meses posteriores.\n\n¿Estás seguro de que deseas eliminar este gasto recurrente?`
+      ? `⚠️ ATENCIÓN: Este es un gasto fijo recurrente heredado de ${getOriginalMonthName(exp.fecha)}.\n\nSi lo eliminas, se borrará de forma permanente de ESTE y TODOS los meses posteriores.`
       : hasDetails
         ? `¿Estás seguro de que deseas eliminar la factura N° ${expenseDetails[exp.id].numeroFactura} por $${fmt(exp.monto)}?`
         : `¿Estás seguro de que deseas eliminar el gasto "${exp.categoria}" por $${fmt(exp.monto)}?`;
 
-    if (!window.confirm(confirmMessage)) return;
-
-    setDeletingId(exp.id);
-    try {
-      await deleteExpense(exp.id);
-      
-      // Eliminar también de los detalles locales si corresponde
-      if (hasDetails) {
-        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
-        const updated = { ...expenseDetails };
-        delete updated[exp.id];
-        setExpenseDetails(updated);
-        localStorage.setItem(detailsKey, JSON.stringify(updated));
-      }
-    } finally {
-      setDeletingId(null);
-    }
+    openConfirm({
+      title: inherited ? 'Eliminar Gasto Recurrente' : 'Eliminar Gasto',
+      message: confirmMessage,
+      variant: 'danger',
+      confirmText: 'Sí, eliminar',
+      onConfirm: async () => {
+        closeConfirm();
+        setDeletingId(exp.id);
+        try {
+          await deleteExpense(exp.id);
+          if (hasDetails) {
+            const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+            const updated = { ...expenseDetails };
+            delete updated[exp.id];
+            setExpenseDetails(updated);
+            localStorage.setItem(detailsKey, JSON.stringify(updated));
+          }
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    });
   };
 
   const handleStartEditSupplier = (supplier) => {
@@ -708,7 +742,18 @@ export default function ExpensesModule() {
 
   return (
     <div className="space-y-6 text-slate-900">
-      
+
+      {/* Modal de Confirmación global (reemplaza window.confirm) */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        confirmText={confirmModal.confirmText}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
