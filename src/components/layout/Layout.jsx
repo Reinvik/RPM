@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, RefreshCw } from 'lucide-react';
 import Sidebar from './Sidebar';
 import DateSelector from './DateSelector';
+import { useNexusContext } from '../../context/NexusContext';
 
 const VIEW_TITLES = {
   dashboard: 'Resumen General',
@@ -15,6 +16,16 @@ const VIEW_TITLES = {
 
 export default function Layout({ children, currentView, setCurrentView }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const { triggerGlobalRefresh } = useNexusContext();
+
+  const handleSync = () => {
+    if (syncing) return;
+    setSyncing(true);
+    triggerGlobalRefresh();
+    // El botón gira 1.5 segundos para dar feedback visual
+    setTimeout(() => setSyncing(false), 1500);
+  };
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
@@ -38,7 +49,29 @@ export default function Layout({ children, currentView, setCurrentView }) {
               {VIEW_TITLES[currentView] || currentView}
             </h2>
           </div>
-          <DateSelector />
+
+          <div className="flex items-center gap-2">
+            {/* Botón sincronización */}
+            <button
+              onClick={handleSync}
+              title="Sincronizar datos con el servidor"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all
+                ${syncing
+                  ? 'bg-blue-50 border-blue-200 text-blue-600 cursor-not-allowed'
+                  : 'bg-white border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50'
+                }`}
+            >
+              <RefreshCw
+                size={14}
+                className={syncing ? 'animate-spin' : ''}
+              />
+              <span className="hidden sm:inline">
+                {syncing ? 'Sincronizando...' : 'Sincronizar'}
+              </span>
+            </button>
+
+            <DateSelector />
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50">
           {children}
@@ -47,5 +80,3 @@ export default function Layout({ children, currentView, setCurrentView }) {
     </div>
   );
 }
-
-

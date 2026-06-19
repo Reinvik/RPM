@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useNexusContext } from '../context/NexusContext';
 
 export const useNexusRPM = () => {
-  const { companyId, selectedMonth, selectedYear } = useNexusContext();
+  const { companyId, selectedMonth, selectedYear, globalRefreshTick } = useNexusContext();
   const [loading, setLoading] = useState(true);
   const [trigger, setTrigger] = useState(0);
   const [data, setData] = useState({
@@ -437,7 +437,7 @@ export const useNexusRPM = () => {
     };
 
     fetchFinancialData();
-  }, [companyId, selectedMonth, selectedYear, trigger]);
+  }, [companyId, selectedMonth, selectedYear, trigger, globalRefreshTick]);
 
   const addExpense = async (expenseData) => {
     if (!companyId) return { error: 'No company ID' };

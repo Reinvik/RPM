@@ -18,6 +18,18 @@ export const NexusProvider = ({ children }) => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
+  // ── Refresh global — cualquier módulo puede suscribirse para recargarse ──
+  const [globalRefreshTick, setGlobalRefreshTick] = useState(0);
+  const triggerGlobalRefresh = () => setGlobalRefreshTick(t => t + 1);
+
+  // Auto-refresh cada 90 segundos (sincronización pasiva entre PCs)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setGlobalRefreshTick(t => t + 1);
+    }, 90_000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Prevenir que el refresh de token reinicie la empresa seleccionada por el superadmin
   const fetchUserProfile = async (userId, currentCompId) => {
     try {
@@ -156,6 +168,8 @@ export const NexusProvider = ({ children }) => {
     setSelectedMonth,
     selectedYear,
     setSelectedYear,
+    globalRefreshTick,
+    triggerGlobalRefresh,
     login,
     changeCompany,
     handleLogout
