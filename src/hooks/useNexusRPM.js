@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useNexusContext } from '../context/NexusContext';
 
@@ -6,6 +6,12 @@ export const useNexusRPM = () => {
   const { companyId, selectedMonth, selectedYear, globalRefreshTick } = useNexusContext();
   const [loading, setLoading] = useState(true);
   const [trigger, setTrigger] = useState(0);
+  const isInitialLoad = useRef(true);
+
+  // Cada vez que cambia de mes, año o empresa, restablecer bandera de carga inicial
+  useEffect(() => {
+    isInitialLoad.current = true;
+  }, [companyId, selectedMonth, selectedYear]);
   const [data, setData] = useState({
     salesTotal: 0,
     fixedCosts: 0,
@@ -41,7 +47,9 @@ export const useNexusRPM = () => {
     if (!companyId) return;
 
     const fetchFinancialData = async () => {
-      setLoading(true);
+      if (isInitialLoad.current) {
+        setLoading(true);
+      }
       const currentMonth = selectedMonth;
       const currentYear = selectedYear;
 
@@ -433,6 +441,7 @@ export const useNexusRPM = () => {
         console.error("Error global fetching RPM data:", err);
       } finally {
         setLoading(false);
+        isInitialLoad.current = false;
       }
     };
 

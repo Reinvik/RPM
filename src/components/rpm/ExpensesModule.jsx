@@ -103,6 +103,7 @@ export default function ExpensesModule() {
 
   // Buscadores
   const [searchInvoice, setSearchInvoice] = useState('');
+  const [payableCardFilter, setPayableCardFilter] = useState('all'); // 'all', 'pending', 'overdue', '7days', '30days'
 
   // ── Estado del modal de confirmación (reemplaza window.confirm) ──
   const [confirmModal, setConfirmModal] = useState({
@@ -450,14 +451,46 @@ export default function ExpensesModule() {
   }, [allExpenses, expenseDetails, suppliers, selectedMonth, selectedYear]);
 
   const filteredInvoices = React.useMemo(() => {
+    let result = invoices;
     const q = searchInvoice.toLowerCase().trim();
-    if (!q) return invoices;
-    return invoices.filter(inv => 
-      inv.supplierName.toLowerCase().includes(q) ||
-      inv.numeroFactura.toLowerCase().includes(q) ||
-      inv.categoria.toLowerCase().includes(q)
-    );
-  }, [invoices, searchInvoice]);
+    if (q) {
+      result = result.filter(inv => 
+        inv.supplierName.toLowerCase().includes(q) ||
+        inv.numeroFactura.toLowerCase().includes(q) ||
+        inv.categoria.toLowerCase().includes(q)
+      );
+    }
+
+    const hoyStr = new Date().toISOString().split('T')[0];
+    const hoy = new Date(hoyStr + 'T00:00:00');
+
+    if (payableCardFilter === 'pending') {
+      result = result.filter(inv => inv.estadoPago === 'Pendiente');
+    } else if (payableCardFilter === 'overdue') {
+      result = result.filter(inv => {
+        if (inv.estadoPago !== 'Pendiente') return false;
+        const venc = new Date(inv.fechaVencimiento + 'T00:00:00');
+        const diffDays = Math.ceil((venc - hoy) / (1000 * 60 * 60 * 24));
+        return diffDays < 0;
+      });
+    } else if (payableCardFilter === '7days') {
+      result = result.filter(inv => {
+        if (inv.estadoPago !== 'Pendiente') return false;
+        const venc = new Date(inv.fechaVencimiento + 'T00:00:00');
+        const diffDays = Math.ceil((venc - hoy) / (1000 * 60 * 60 * 24));
+        return diffDays >= 0 && diffDays <= 7;
+      });
+    } else if (payableCardFilter === '30days') {
+      result = result.filter(inv => {
+        if (inv.estadoPago !== 'Pendiente') return false;
+        const venc = new Date(inv.fechaVencimiento + 'T00:00:00');
+        const diffDays = Math.ceil((venc - hoy) / (1000 * 60 * 60 * 24));
+        return diffDays >= 0 && diffDays <= 30;
+      });
+    }
+
+    return result;
+  }, [invoices, searchInvoice, payableCardFilter]);
 
   const filteredSuppliers = React.useMemo(() => {
     const q = searchSupplier.toLowerCase().trim();
@@ -2015,10 +2048,17 @@ export default function ExpensesModule() {
       {/* CONTENIDO DE PESTAÑA: CUENTAS POR PAGAR */}
       {activeTab === 'payable' && (
         <div className="space-y-6 animate-fade-in">
-          {/* Resumen de KPIs de Deuda */}
+          {/* Resumen de KPIs de Deuda (Interactivo para filtrar) */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* KPI Total Pendiente */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+            {/* KPI Total por Pagar */}
+            <div 
+              onClick={() => setPayableCardFilter(payableCardFilter === 'pending' ? 'all' : 'pending')}
+              className={`cursor-pointer hover:shadow-md transition-all select-none p-5 rounded-2xl border relative overflow-hidden flex flex-col justify-between ${
+                payableCardFilter === 'pending'
+                  ? 'border-slate-400 bg-slate-50/50 ring-2 ring-slate-400/20'
+                  : 'bg-white border-slate-200 shadow-sm'
+              }`}
+            >
               <div className="absolute top-0 right-0 w-20 h-20 bg-slate-500/5 rounded-full blur-xl"></div>
               <div>
                 <div className="flex justify-between items-center mb-2">
@@ -2032,8 +2072,15 @@ export default function ExpensesModule() {
               </p>
             </div>
 
-            {/* KPI Vencido */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+            {/* KPI Deuda Vencida */}
+            <div 
+              onClick={() => setPayableCardFilter(payableCardFilter === 'overdue' ? 'all' : 'overdue')}
+              className={`cursor-pointer hover:shadow-md transition-all select-none p-5 rounded-2xl border relative overflow-hidden flex flex-col justify-between ${
+                payableCardFilter === 'overdue'
+                  ? 'border-rose-450 bg-rose-50/20 ring-2 ring-rose-450/20'
+                  : 'bg-white border-slate-200 shadow-sm'
+              }`}
+            >
               <div className="absolute top-0 right-0 w-20 h-20 bg-rose-500/5 rounded-full blur-xl"></div>
               <div>
                 <div className="flex justify-between items-center mb-2">
@@ -2048,7 +2095,14 @@ export default function ExpensesModule() {
             </div>
 
             {/* KPI Vence en 7 Días */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+            <div 
+              onClick={() => setPayableCardFilter(payableCardFilter === '7days' ? 'all' : '7days')}
+              className={`cursor-pointer hover:shadow-md transition-all select-none p-5 rounded-2xl border relative overflow-hidden flex flex-col justify-between ${
+                payableCardFilter === '7days'
+                  ? 'border-amber-450 bg-amber-50/20 ring-2 ring-amber-450/20'
+                  : 'bg-white border-slate-200 shadow-sm'
+              }`}
+            >
               <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/5 rounded-full blur-xl"></div>
               <div>
                 <div className="flex justify-between items-center mb-2">
@@ -2063,7 +2117,14 @@ export default function ExpensesModule() {
             </div>
 
             {/* KPI Vence en 30 Días */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+            <div 
+              onClick={() => setPayableCardFilter(payableCardFilter === '30days' ? 'all' : '30days')}
+              className={`cursor-pointer hover:shadow-md transition-all select-none p-5 rounded-2xl border relative overflow-hidden flex flex-col justify-between ${
+                payableCardFilter === '30days'
+                  ? 'border-blue-450 bg-blue-50/20 ring-2 ring-blue-450/20'
+                  : 'bg-white border-slate-200 shadow-sm'
+              }`}
+            >
               <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/5 rounded-full blur-xl"></div>
               <div>
                 <div className="flex justify-between items-center mb-2">
@@ -2082,7 +2143,26 @@ export default function ExpensesModule() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
-                <h3 className="text-base font-bold text-slate-800">Control de Facturas y Vencimientos</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-800">Control de Facturas y Vencimientos</h3>
+                  {payableCardFilter !== 'all' && (
+                    <button
+                      onClick={() => setPayableCardFilter('all')}
+                      className="bg-rose-50 hover:bg-rose-100 text-rose-600 text-[10px] font-extrabold px-2.5 py-1 rounded-lg border border-rose-200 flex items-center gap-1 transition-all animate-fade-in"
+                      title="Quitar filtro de tarjeta"
+                    >
+                      <span>
+                        Filtro: {
+                          payableCardFilter === 'pending' ? 'Total por pagar' : 
+                          payableCardFilter === 'overdue' ? 'Vencidas' : 
+                          payableCardFilter === '7days' ? 'Vence en 7 días' : 
+                          'Vence en 30 días'
+                        }
+                      </span>
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400">Control global e histórico de deudas de proveedores.</p>
               </div>
               
