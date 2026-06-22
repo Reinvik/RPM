@@ -50,7 +50,15 @@ const DonutLabel = ({ cx, cy, total }) => (
 );
 
 // ─────────────────────────────────────────────────────────────────────
-export default function ExpensesReport({ allExpenses, selectedMonth, selectedYear, capexCategories = [] }) {
+export default function ExpensesReport({
+  allExpenses,
+  selectedMonth,
+  selectedYear,
+  capexCategories = [],
+  allAvailableCategories = [],
+  onMergeCategory = null,
+  isUpdating = false
+}) {
   const [filterClasif, setFilterClasif]     = useState('Todos');  // 'OPEX' | 'CAPEX' | 'Todos'
   const [filterCategoria, setFilterCategoria] = useState('Todas');
   const [chartMode, setChartMode]           = useState('donut');  // 'donut' | 'barras' | 'linea'
@@ -392,7 +400,28 @@ export default function ExpensesReport({ allExpenses, selectedMonth, selectedYea
                           className="w-2.5 h-2.5 rounded-full shrink-0"
                           style={{ backgroundColor: PALETTE[i % PALETTE.length] }}
                         />
-                        <span className="font-semibold text-slate-700 truncate max-w-[120px]">{item.name}</span>
+                        {onMergeCategory ? (
+                          <select
+                            value={item.name}
+                            disabled={isUpdating}
+                            onChange={(e) => onMergeCategory(item.name, e.target.value)}
+                            className="font-semibold text-slate-700 text-[11px] bg-transparent border-none py-0.5 px-1 pr-4.5 rounded cursor-pointer focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-colors hover:bg-slate-100 appearance-none disabled:opacity-50 max-w-[135px] truncate"
+                            style={{
+                              backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                              backgroundRepeat: 'no-repeat',
+                              backgroundPosition: 'right center',
+                              backgroundSize: '9px'
+                            }}
+                            title={`Reclasificar / Unir "${item.name}" con otra categoría`}
+                          >
+                            <option value={item.name} disabled>{item.name} (Unir a...)</option>
+                            {allAvailableCategories.filter(cat => cat !== item.name).map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="font-semibold text-slate-700 truncate max-w-[120px]">{item.name}</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-black text-slate-800">${fmtM(item.value)}</span>

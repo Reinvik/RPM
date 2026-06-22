@@ -902,6 +902,37 @@ export default function ExpensesModule() {
     }
   };
 
+  const handleMergeCategory = async (oldCategory, newCategory) => {
+    if (oldCategory === newCategory) return;
+
+    const expensesToUpdate = (allExpenses || []).filter(e => e.categoria === oldCategory);
+    if (expensesToUpdate.length === 0) {
+      alert(`No se encontraron gastos con la categoría "${oldCategory}".`);
+      return;
+    }
+
+    openConfirm({
+      title: 'Unificar Categorías',
+      message: `¿Estás seguro de que deseas reasignar los ${expensesToUpdate.length} gastos de "${oldCategory}" a "${newCategory}"? Esto los unirá en una sola categoría de forma permanente.`,
+      variant: 'warning',
+      confirmText: 'Sí, unificar',
+      onConfirm: async () => {
+        closeConfirm();
+        setUpdatingCategoryId('merge-all');
+        try {
+          for (const exp of expensesToUpdate) {
+            await updateExpense(exp.id, { categoria: newCategory });
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Error inesperado al unificar las categorías.');
+        } finally {
+          setUpdatingCategoryId(null);
+        }
+      }
+    });
+  };
+
   const handleDelete = async (exp) => {
     const inherited = isInherited(exp);
     const hasDetails = !!expenseDetails[exp.id];
@@ -2442,6 +2473,9 @@ export default function ExpensesModule() {
           selectedMonth={selectedMonth}
           selectedYear={selectedYear}
           capexCategories={capexCategories}
+          allAvailableCategories={allAvailableCategories}
+          onMergeCategory={handleMergeCategory}
+          isUpdating={updatingCategoryId === 'merge-all'}
         />
       )}
 
