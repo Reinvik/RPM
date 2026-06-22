@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   DollarSign, 
   Download, 
@@ -72,6 +72,16 @@ export default function CashFlowModule() {
     const saved = localStorage.getItem(`nexus_rpm_cashflow_hide_future_fixed_${companyId}`);
     return saved === 'true';
   });
+
+  // Sincronizar estados cuando cargue o cambie de taller (companyId)
+  useEffect(() => {
+    if (!companyId) return;
+    const savedMonth = localStorage.getItem(`nexus_rpm_cashflow_start_month_${companyId}`);
+    setStartMonthIdx(savedMonth !== null ? Number(savedMonth) : 0);
+
+    const savedHideFuture = localStorage.getItem(`nexus_rpm_cashflow_hide_future_fixed_${companyId}`);
+    setHideFutureFixed(savedHideFuture === 'true');
+  }, [companyId]);
 
   const handleStartMonthChange = (e) => {
     const idx = Number(e.target.value);
