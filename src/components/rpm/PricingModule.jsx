@@ -25,9 +25,24 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNexusContext } from '../../context/NexusContext';
+import ConfirmModal from './ConfirmModal';
 
 export default function PricingModule() {
   const { companyId } = useNexusContext();
+
+  // Estado del modal de confirmación (reemplaza window.confirm)
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    variant: 'warning',
+    confirmText: 'Confirmar',
+    onConfirm: null,
+  });
+  const openConfirm = ({ title, message, variant = 'warning', confirmText = 'Confirmar', onConfirm }) => {
+    setConfirmModal({ isOpen: true, title, message, variant, confirmText, onConfirm });
+  };
+  const closeConfirm = () => setConfirmModal(prev => ({ ...prev, isOpen: false, onConfirm: null }));
   
   // Pestaña principal activa: 'catalog' o 'simulator'
   const [activeTab, setActiveTab] = useState('catalog');
@@ -309,41 +324,54 @@ export default function PricingModule() {
   };
 
   const handleDeleteCustomPart = (id) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este insumo simulado?")) return;
+    openConfirm({
+      title: 'Eliminar Insumo Simulado',
+      message: '¿Seguro que deseas eliminar este insumo simulado?',
+      variant: 'danger',
+      onConfirm: () => {
+        const localCustomKey = `nexus_rpm_supplies_custom_${companyId}`;
+        const customParts = JSON.parse(localStorage.getItem(localCustomKey) || '[]');
+        const updated = customParts.filter(cp => cp.id !== id);
+        localStorage.setItem(localCustomKey, JSON.stringify(updated));
 
-    const localCustomKey = `nexus_rpm_supplies_custom_${companyId}`;
-    const customParts = JSON.parse(localStorage.getItem(localCustomKey) || '[]');
-    const updated = customParts.filter(cp => cp.id !== id);
-    localStorage.setItem(localCustomKey, JSON.stringify(updated));
-
-    if (selectedPartId === id) {
-      setSelectedPartId(null);
-    }
-    setRefreshTrigger(prev => prev + 1);
+        if (selectedPartId === id) {
+          setSelectedPartId(null);
+        }
+        setRefreshTrigger(prev => prev + 1);
+        closeConfirm();
+      }
+    });
   };
 
   const handleApplyGlobalDefaults = () => {
     if (!companyId || parts.length === 0) return;
-    if (!window.confirm(`¿Deseas aplicar la tasa de IVA (${globalTaxRate}%) y Mano de Obra (${globalLaborPercent}%) por defecto a todos los insumos cargados?`)) return;
 
-    const localConfigKey = `nexus_rpm_supplies_config_${companyId}`;
-    const localConfig = JSON.parse(localStorage.getItem(localConfigKey) || '{}');
+    openConfirm({
+      title: 'Aplicar Valores por Defecto',
+      message: `¿Deseas aplicar la tasa de IVA (${globalTaxRate}%) y Mano de Obra (${globalLaborPercent}%) por defecto a todos los insumos cargados?`,
+      variant: 'warning',
+      onConfirm: () => {
+        const localConfigKey = `nexus_rpm_supplies_config_${companyId}`;
+        const localConfig = JSON.parse(localStorage.getItem(localConfigKey) || '{}');
 
-    parts.forEach(part => {
-      if (!part.isCustom) {
-        const config = localConfig[part.id] || {};
-        localConfig[part.id] = {
-          cost: config.cost !== undefined ? config.cost : 0,
-          costType: config.costType || 'neto',
-          laborPercent: globalLaborPercent,
-          taxRate: globalTaxRate
-        };
+        parts.forEach(part => {
+          if (!part.isCustom) {
+            const config = localConfig[part.id] || {};
+            localConfig[part.id] = {
+              cost: config.cost !== undefined ? config.cost : 0,
+              costType: config.costType || 'neto',
+              laborPercent: globalLaborPercent,
+              taxRate: globalTaxRate
+            };
+          }
+        });
+
+        localStorage.setItem(localConfigKey, JSON.stringify(localConfig));
+        setRefreshTrigger(prev => prev + 1);
+        closeConfirm();
+        alert("✅ Configuraciones globales aplicadas.");
       }
     });
-
-    localStorage.setItem(localConfigKey, JSON.stringify(localConfig));
-    alert("✅ Configuraciones globales aplicadas.");
-    setRefreshTrigger(prev => prev + 1);
   };
 
   // ==========================================
@@ -753,6 +781,17 @@ export default function PricingModule() {
 
   return (
     <div className="space-y-6 text-slate-900">
+      
+      {/* Modal de Confirmación global */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        confirmText={confirmModal.confirmText}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
       
       {/* Selector de Pestañas */}
       <div className="flex border-b border-slate-200 bg-white p-1.5 rounded-xl gap-2 max-w-fit shadow-sm">

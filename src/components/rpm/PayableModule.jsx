@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
+import ConfirmModal from './ConfirmModal';
 
 const DEFAULT_OPEX_CATEGORIES = [
   'Insumo de aseo',
@@ -55,6 +56,20 @@ export default function PayableModule() {
   const [activeTab, setActiveTab] = useState('facturas'); // 'facturas' o 'proveedores'
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+
+  // Estado del modal de confirmación (reemplaza window.confirm)
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    variant: 'warning',
+    confirmText: 'Confirmar',
+    onConfirm: null,
+  });
+  const openConfirm = ({ title, message, variant = 'warning', confirmText = 'Confirmar', onConfirm }) => {
+    setConfirmModal({ isOpen: true, title, message, variant, confirmText, onConfirm });
+  };
+  const closeConfirm = () => setConfirmModal(prev => ({ ...prev, isOpen: false, onConfirm: null }));
 
   // Estados de Edición
   const [editingSupplier, setEditingSupplier] = useState(null);
@@ -364,12 +379,18 @@ export default function PayableModule() {
       return;
     }
 
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar al proveedor "${selected.nombre}"?`)) return;
-
-    const suppliersKey = `nexus_rpm_suppliers_${companyId}`;
-    const updated = suppliers.filter(s => s.id !== id);
-    setSuppliers(updated);
-    localStorage.setItem(suppliersKey, JSON.stringify(updated));
+    openConfirm({
+      title: 'Eliminar Proveedor',
+      message: `¿Estás seguro de que deseas eliminar al proveedor "${selected.nombre}"?`,
+      variant: 'danger',
+      onConfirm: () => {
+        const suppliersKey = `nexus_rpm_suppliers_${companyId}`;
+        const updated = suppliers.filter(s => s.id !== id);
+        setSuppliers(updated);
+        localStorage.setItem(suppliersKey, JSON.stringify(updated));
+        closeConfirm();
+      }
+    });
   };
 
   // Guardar Factura
@@ -523,52 +544,62 @@ export default function PayableModule() {
   };
 
   // Registrar pago de una factura
-  const handleRegisterPayment = async (expId) => {
+  const handleRegisterPayment = (expId) => {
     const detail = expenseDetails[expId];
     if (!detail) return;
 
-    if (!window.confirm("¿Confirmas que deseas registrar el pago de esta factura hoy?")) return;
-
-    const detailsKey = `nexus_rpm_expense_details_${companyId}`;
-    const updatedDetails = {
-      ...expenseDetails,
-      [expId]: {
-        ...detail,
-        estadoPago: 'Pagado',
-        fechaPagoReal: new Date().toISOString().split('T')[0]
+    openConfirm({
+      title: 'Registrar Pago',
+      message: '¿Confirmas que deseas registrar el pago de esta factura hoy?',
+      variant: 'success',
+      confirmText: 'Registrar Pago',
+      onConfirm: () => {
+        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        const updatedDetails = {
+          ...expenseDetails,
+          [expId]: {
+            ...detail,
+            estadoPago: 'Pagado',
+            fechaPagoReal: new Date().toISOString().split('T')[0]
+          }
+        };
+        setExpenseDetails(updatedDetails);
+        localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+        closeConfirm();
       }
-    };
-
-    // Opcionalmente podemos actualizar la fecha del gasto en Supabase a la fecha de hoy para que se compute en caja hoy
-    // Pero para mantener la consistencia de la factura original y evitar desbalances, solo actualizamos el estado de pago local.
-    setExpenseDetails(updatedDetails);
-    localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+    });
   };
 
   // Eliminar Factura
-  const handleDeleteInvoice = async (exp) => {
-    if (!window.confirm(`¿Estás seguro de que deseas eliminar la factura N° ${exp.numeroFactura} del proveedor "${exp.supplierName}"?`)) return;
+  const handleDeleteInvoice = (exp) => {
+    openConfirm({
+      title: 'Eliminar Factura',
+      message: `¿Estás seguro de que deseas eliminar la factura N° ${exp.numeroFactura} del proveedor "${exp.supplierName}"?`,
+      variant: 'danger',
+      onConfirm: async () => {
+        closeConfirm();
+        setDeletingId(exp.id);
+        try {
+          // 1. Eliminar egreso de Supabase
+          const res = await deleteExpense(exp.id);
+          if (res.error) throw res.error;
 
-    setDeletingId(exp.id);
-    try {
-      // 1. Eliminar egreso de Supabase
-      const res = await deleteExpense(exp.id);
-      if (res.error) throw res.error;
+          // 2. Eliminar del mapa de localStorage
+          const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+          const updated = { ...expenseDetails };
+          delete updated[exp.id];
+          
+          setExpenseDetails(updated);
+          localStorage.setItem(detailsKey, JSON.stringify(updated));
 
-      // 2. Eliminar del mapa de localStorage
-      const detailsKey = `nexus_rpm_expense_details_${companyId}`;
-      const updated = { ...expenseDetails };
-      delete updated[exp.id];
-      
-      setExpenseDetails(updated);
-      localStorage.setItem(detailsKey, JSON.stringify(updated));
-
-    } catch (err) {
-      console.error(err);
-      alert("Error al eliminar factura: " + (err.message || err));
-    } finally {
-      setDeletingId(null);
-    }
+        } catch (err) {
+          console.error(err);
+          alert("Error al eliminar factura: " + (err.message || err));
+        } finally {
+          setDeletingId(null);
+        }
+      }
+    });
   };
 
   const fmt = (num) => Math.round(num).toLocaleString('es-CL');
@@ -584,6 +615,17 @@ export default function PayableModule() {
 
   return (
     <div className="space-y-6 text-slate-900">
+      
+      {/* Modal de Confirmación global */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        confirmText={confirmModal.confirmText}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
       
       {/* Resumen Cards (Deuda Operativa) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
