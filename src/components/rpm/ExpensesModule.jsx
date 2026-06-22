@@ -80,6 +80,7 @@ export default function ExpensesModule() {
   const [customCapexCategories, setCustomCapexCategories] = useState([]);
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [updatingCategoryId, setUpdatingCategoryId] = useState(null);
   
   // Estado para la pestaña activa principal y la sub-pestaña de gastos
   const [activeTab, setActiveTab] = useState('gastos'); // 'gastos', 'payable', 'proveedores'
@@ -344,6 +345,11 @@ export default function ExpensesModule() {
   // Listas de categorías combinadas
   const opexCategories = [...DEFAULT_OPEX_CATEGORIES, ...customOpexCategories];
   const capexCategories = [...DEFAULT_CAPEX_CATEGORIES, ...customCapexCategories];
+
+  const allAvailableCategories = React.useMemo(() => {
+    const combined = [...opexCategories, ...capexCategories];
+    return Array.from(new Set(combined)).sort((a, b) => a.localeCompare(b));
+  }, [opexCategories, capexCategories]);
 
   // --- useMemo DE CUENTAS POR PAGAR Y PROVEEDORES ---
   const invoices = React.useMemo(() => {
@@ -879,6 +885,21 @@ export default function ExpensesModule() {
         closeConfirm();
       },
     });
+  };
+
+  const handleQuickCategoryChange = async (expenseId, newCategory) => {
+    setUpdatingCategoryId(expenseId);
+    try {
+      const result = await updateExpense(expenseId, { categoria: newCategory });
+      if (result.error) {
+        alert('Error al actualizar la categoría: ' + (result.error.message || result.error));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error inesperado al actualizar la categoría.');
+    } finally {
+      setUpdatingCategoryId(null);
+    }
   };
 
   const handleDelete = async (exp) => {
@@ -2216,7 +2237,24 @@ export default function ExpensesModule() {
                             <span className="text-[10px] text-slate-400 block font-semibold">{inv.supplierRut}</span>
                           </td>
                           <td className="py-3.5 px-4 font-mono font-bold text-slate-600">{inv.numeroFactura}</td>
-                          <td className="py-3.5 px-4 font-semibold text-slate-500">{inv.categoria}</td>
+                          <td className="py-3.5 px-4 font-semibold text-slate-500">
+                            <select
+                              value={inv.categoria}
+                              disabled={updatingCategoryId === inv.id}
+                              onChange={(e) => handleQuickCategoryChange(inv.id, e.target.value)}
+                              className="font-semibold text-slate-500 text-xs bg-transparent border-none py-0.5 px-1 pr-4 rounded cursor-pointer focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-colors hover:bg-slate-200/50 appearance-none disabled:opacity-50"
+                              style={{
+                                backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                                backgroundRepeat: 'no-repeat',
+                                backgroundPosition: 'right center',
+                                backgroundSize: '10px'
+                              }}
+                            >
+                              {allAvailableCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
+                          </td>
                           <td className="py-3.5 px-4 text-slate-500 font-semibold">
                             {new Date(inv.fecha + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                           </td>
@@ -2536,7 +2574,22 @@ export default function ExpensesModule() {
       >
         <div className="flex-1 min-w-0 pr-3">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-bold text-slate-800 text-sm truncate">{exp.categoria}</p>
+            <select
+              value={exp.categoria}
+              disabled={updatingCategoryId === exp.id}
+              onChange={(e) => handleQuickCategoryChange(exp.id, e.target.value)}
+              className="font-bold text-slate-800 text-sm bg-transparent border-none py-0 px-1 pr-5 rounded cursor-pointer focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-colors hover:bg-slate-200/50 appearance-none disabled:opacity-50"
+              style={{
+                backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231e293b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right center',
+                backgroundSize: '11px'
+              }}
+            >
+              {allAvailableCategories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
             
             {/* Badges de Recurrencia */}
             {isFixed ? (
