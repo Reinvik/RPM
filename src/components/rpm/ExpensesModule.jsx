@@ -348,8 +348,21 @@ export default function ExpensesModule() {
 
   const allAvailableCategories = React.useMemo(() => {
     const combined = [...opexCategories, ...capexCategories];
+    
+    // Escanear e incluir todas las categorías reales de egresos registrados en la base de datos
+    if (allExpenses && Array.isArray(allExpenses)) {
+      allExpenses.forEach(exp => {
+        if (exp.categoria) {
+          const cleanCat = exp.categoria.replace(/\s\(Cuota\s\d+\/\d+\)$/, '').trim();
+          if (cleanCat) {
+            combined.push(cleanCat);
+          }
+        }
+      });
+    }
+    
     return Array.from(new Set(combined)).sort((a, b) => a.localeCompare(b));
-  }, [opexCategories, capexCategories]);
+  }, [opexCategories, capexCategories, allExpenses]);
 
   // --- useMemo DE CUENTAS POR PAGAR Y PROVEEDORES ---
   const invoices = React.useMemo(() => {
