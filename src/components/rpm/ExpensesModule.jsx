@@ -21,11 +21,13 @@ import {
   X,
   Search,
   Mail,
-  Phone
+  Phone,
+  BarChart3
 } from 'lucide-react';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
 import ConfirmModal from './ConfirmModal';
+import ExpensesReport from './ExpensesReport';
 
 const DEFAULT_OPEX_CATEGORIES = [
   'Insumo de aseo',
@@ -1540,6 +1542,17 @@ export default function ExpensesModule() {
             {suppliers.length}
           </span>
         </button>
+        <button
+          onClick={() => setActiveTab('informe')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'informe'
+              ? 'bg-white text-blue-700 shadow-sm border border-blue-200/50'
+              : 'text-slate-500 hover:text-slate-850'
+          }`}
+        >
+          <BarChart3 size={15} />
+          Informe
+        </button>
       </div>
 
       {/* CONTENIDO DE PESTAÑA: GASTOS DEL PERIODO */}
@@ -1970,6 +1983,15 @@ export default function ExpensesModule() {
             </div>
           )}
         </div>
+      )}
+
+      {/* CONTENIDO DE PESTAÑA: INFORME */}
+      {activeTab === 'informe' && (
+        <ExpensesReport
+          allExpenses={allExpenses}
+          selectedMonth={selectedMonth}
+          selectedYear={selectedYear}
+        />
       )}
 
       {/* Modal de Proveedor (Creación / Edición) */}
