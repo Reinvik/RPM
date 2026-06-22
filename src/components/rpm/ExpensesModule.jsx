@@ -2563,7 +2563,7 @@ export default function ExpensesModule() {
             )}
 
             {/* Badge de Factura si corresponde */}
-            {detail && (
+            {detail && detail.numeroFactura && (
               <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
                 detail.estadoPago === 'Pagado'
                   ? 'bg-emerald-50 text-emerald-650 border-emerald-200'
@@ -2571,6 +2571,30 @@ export default function ExpensesModule() {
               }`}>
                 <Receipt size={10} className="shrink-0" />
                 Factura N° {detail.numeroFactura} - {supplier ? supplier.nombre : 'Proveedor'} ({detail.estadoPago})
+              </span>
+            )}
+
+            {/* Badge para Gasto Fijo si corresponde */}
+            {detail && !detail.numeroFactura && exp.tipo === 'Fijo' && (
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
+                (detail.estadoPago?.[`${selectedYear}-${selectedMonth}`] === 'Pagado')
+                  ? 'bg-emerald-50 text-emerald-650 border-emerald-200'
+                  : 'bg-amber-50 text-amber-650 border-amber-200'
+              }`}>
+                <Clock size={10} className="shrink-0" />
+                Fijo: {detail.estadoPago?.[`${selectedYear}-${selectedMonth}`] || 'Pendiente'}
+              </span>
+            )}
+
+            {/* Badge para Gasto Variable Simple si corresponde */}
+            {detail && !detail.numeroFactura && exp.tipo === 'Variable' && (
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
+                detail.estadoPago === 'Pagado'
+                  ? 'bg-emerald-50 text-emerald-650 border-emerald-200'
+                  : 'bg-amber-50 text-amber-650 border-amber-200'
+              }`}>
+                <Clock size={10} className="shrink-0" />
+                Variable: {detail.estadoPago || 'Pagado'}
               </span>
             )}
           </div>
