@@ -127,6 +127,11 @@ export default function ExpensesModule() {
   // Día de vencimiento para gastos fijos (1-31)
   const [diaVencimientoFijo, setDiaVencimientoFijo] = useState('');
 
+  // Control de estado de pago para egresos simples (no facturas)
+  const [estadoPagoSimple, setEstadoPagoSimple] = useState('Pagado');
+  const [fechaVencimientoSimple, setFechaVencimientoSimple] = useState(new Date().toISOString().split('T')[0]);
+  const [fechaPagoRealSimple, setFechaPagoRealSimple] = useState(new Date().toISOString().split('T')[0]);
+
 
   // Helper para sumar días a una fecha
   const addDays = (dateStr, days) => {
@@ -261,18 +266,36 @@ export default function ExpensesModule() {
     
     // Si corresponde a una factura de proveedor, precargar datos de factura
     const detail = expenseDetails[exp.id];
-    if (detail) {
+    if (detail && detail.numeroFactura) {
       setIsFacturaProveedor(true);
       setSelectedSupplierId(detail.supplierId);
       // Remover sufijo de cuota del número de factura para edición limpia
       const cleanNumFactura = detail.numeroFactura.replace(/-C\d+$/, '');
       setNumeroFactura(cleanNumFactura);
       setFechaVencimientoFactura(detail.fechaVencimiento);
+
+      setEstadoPagoSimple('Pagado');
+      setFechaVencimientoSimple(exp.fecha);
+      setFechaPagoRealSimple(exp.fecha);
+      setDiaVencimientoFijo('');
     } else {
       setIsFacturaProveedor(false);
       setSelectedSupplierId('');
       setNumeroFactura('');
       setFechaVencimientoFactura('');
+      
+      // Si es un egreso simple, precargar metadatos si existen
+      if (detail) {
+        setEstadoPagoSimple(detail.estadoPago || 'Pagado');
+        setFechaVencimientoSimple(detail.fechaVencimiento || exp.fecha);
+        setFechaPagoRealSimple(detail.fechaPagoReal || exp.fecha);
+        setDiaVencimientoFijo(detail.diaVencimiento || '');
+      } else {
+        setEstadoPagoSimple('Pagado');
+        setFechaVencimientoSimple(exp.fecha);
+        setFechaPagoRealSimple(exp.fecha);
+        setDiaVencimientoFijo('');
+      }
     }
 
     setIsCuotasEnabled(false);
@@ -296,6 +319,10 @@ export default function ExpensesModule() {
     setSelectedSupplierId('');
     setNumeroFactura('');
     setFechaVencimientoFactura('');
+    setDiaVencimientoFijo('');
+    setEstadoPagoSimple('Pagado');
+    setFechaVencimientoSimple(new Date().toISOString().split('T')[0]);
+    setFechaPagoRealSimple(new Date().toISOString().split('T')[0]);
   };
 
   // Cargar Proveedores, Detalles de Facturas y Categorías desde LocalStorage al iniciar o cambiar de empresa
@@ -322,11 +349,15 @@ export default function ExpensesModule() {
     const hoyStr = new Date().toISOString().split('T')[0];
     const list = [];
     const expensesList = allExpenses || [];
+    
+    // Identificar qué egresos ya están como facturas para evitar duplicar
+    const facturasAgregadasIds = new Set();
 
-    // 1. Facturas de proveedor (con expenseDetails)
+    // 1. Facturas de proveedor (con expenseDetails y número de factura)
     expensesList.forEach(exp => {
       const detail = expenseDetails[exp.id];
       if (detail && detail.numeroFactura) {
+        facturasAgregadasIds.add(exp.id);
         const supplier = suppliers.find(s => s.id === detail.supplierId);
         list.push({
           ...exp,
@@ -342,38 +373,77 @@ export default function ExpensesModule() {
       }
     });
 
-    // 2. Gastos Fijos con día de vencimiento configurado
+    // 2. Gastos Fijos (del mes activo selectedYear-selectedMonth)
+    // Se listan todos los gastos fijos. Si no tienen diaVencimiento configurado,
+    // se toma por defecto el día de su fecha original de registro.
     expensesList.forEach(exp => {
       if (exp.tipo !== 'Fijo') return;
-      const detail = expenseDetails[exp.id];
-      // Solo los que tienen diaVencimiento pero NO son facturas de proveedor
-      if (!detail || detail.numeroFactura) return;
-      if (!detail.diaVencimiento) return;
+      if (facturasAgregadasIds.has(exp.id)) return;
 
-      // Calcular la fecha de vencimiento para el mes/año del gasto fijo
-      const expDate = new Date(exp.fecha);
-      const yr = expDate.getFullYear();
-      const mo = expDate.getMonth(); // 0-indexed
-      const dia = Number(detail.diaVencimiento);
-      // Usar el mes actual si el fijo está activo (heredado)
+      const detail = expenseDetails[exp.id];
+      
+      // Obtener día de vencimiento por defecto desde la fecha original de registro
+      const expDate = new Date(exp.fecha + 'T00:00:00');
+      let dia = expDate.getDate();
+      if (detail && detail.diaVencimiento) {
+        dia = Number(detail.diaVencimiento);
+      }
+
       const vencYear = selectedYear;
       const vencMonth = selectedMonth;
       const daysInMonth = new Date(vencYear, vencMonth + 1, 0).getDate();
       const diaReal = Math.min(dia, daysInMonth);
       const fechaVenc = `${vencYear}-${String(vencMonth + 1).padStart(2,'0')}-${String(diaReal).padStart(2,'0')}`;
 
+      const estado = detail?.estadoPago?.[`${vencYear}-${vencMonth}`] || 'Pendiente';
+      const pagoReal = detail?.fechaPagoReal?.[`${vencYear}-${vencMonth}`] || null;
+
       list.push({
         ...exp,
-        detail,
+        detail: detail || {},
         tipoEntrada: 'fijo',
         supplierName: exp.categoria,
         supplierRut: '',
         numeroFactura: `Fijo-${exp.id.slice(-4)}`,
         fechaVencimiento: fechaVenc,
-        estadoPago: detail.estadoPago?.[`${vencYear}-${vencMonth}`] || 'Pendiente',
-        fechaPagoReal: detail.fechaPagoReal?.[`${vencYear}-${vencMonth}`] || null,
+        estadoPago: estado,
+        fechaPagoReal: pagoReal,
         esFijo: true,
       });
+    });
+
+    // 3. Gastos Variables Simples (que no son facturas)
+    expensesList.forEach(exp => {
+      if (exp.tipo !== 'Variable') return;
+      if (facturasAgregadasIds.has(exp.id)) return;
+
+      const detail = expenseDetails[exp.id];
+      const estado = detail?.estadoPago || 'Pagado';
+      const vencimiento = detail?.fechaVencimiento || exp.fecha;
+      const pagoReal = estado === 'Pagado' ? (detail?.fechaPagoReal || exp.fecha) : null;
+
+      // Mostrar el gasto variable en Cuentas por Pagar si:
+      // - Está Pendiente de pago.
+      // - Si está Pagado, solo si su fecha de registro o pago real cae en el mes activo.
+      const expDate = new Date(exp.fecha + 'T00:00:00');
+      const esMesActivo = expDate.getFullYear() === selectedYear && expDate.getMonth() === selectedMonth;
+      const pagoRealDate = pagoReal ? new Date(pagoReal + 'T00:00:00') : null;
+      const esMesPagoActivo = pagoRealDate && pagoRealDate.getFullYear() === selectedYear && pagoRealDate.getMonth() === selectedMonth;
+
+      if (estado === 'Pendiente' || esMesActivo || esMesPagoActivo) {
+        list.push({
+          ...exp,
+          detail: detail || {},
+          tipoEntrada: 'variable',
+          supplierName: exp.categoria,
+          supplierRut: '',
+          numeroFactura: 'S/N (Simple)',
+          fechaVencimiento: vencimiento,
+          estadoPago: estado,
+          fechaPagoReal: pagoReal,
+          esVariableSimple: true,
+        });
+      }
     });
 
     return list.sort((a, b) => new Date(a.fechaVencimiento) - new Date(b.fechaVencimiento));
@@ -533,13 +603,27 @@ export default function ExpensesModule() {
           setExpenseDetails(updatedDetails);
           localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
         } else {
-          // Si antes era factura y ahora no, remover metadatos
-          if (expenseDetails[editingExpense.id]) {
-            const updatedDetails = { ...expenseDetails };
-            delete updatedDetails[editingExpense.id];
-            setExpenseDetails(updatedDetails);
-            localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+          // Guardar metadatos de egreso simple
+          const updatedDetails = { ...expenseDetails };
+          
+          if (recurrencia === 'Fijo') {
+            const prevDetail = expenseDetails[editingExpense.id] || {};
+            updatedDetails[editingExpense.id] = {
+              diaVencimiento: diaVencimientoFijo || '',
+              estadoPago: prevDetail.estadoPago || {},
+              fechaPagoReal: prevDetail.fechaPagoReal || {}
+            };
+          } else {
+            // Variable simple
+            updatedDetails[editingExpense.id] = {
+              estadoPago: estadoPagoSimple,
+              fechaVencimiento: fechaVencimientoSimple || fecha,
+              fechaPagoReal: estadoPagoSimple === 'Pagado' ? (fechaPagoRealSimple || fecha) : null
+            };
           }
+          
+          setExpenseDetails(updatedDetails);
+          localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
         }
         
         setEditingExpense(null);
@@ -616,15 +700,27 @@ export default function ExpensesModule() {
         });
         if (result.error) throw result.error;
 
-        // Si es Fijo con día de vencimiento, guardar en details
-        if (recurrencia === 'Fijo' && diaVencimientoFijo) {
-          const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        
+        if (recurrencia === 'Fijo') {
           const updatedDetails = {
             ...expenseDetails,
             [result.data.id]: {
-              diaVencimiento: diaVencimientoFijo,
+              diaVencimiento: diaVencimientoFijo || '',
               estadoPago: {},     // clave = 'YYYY-M' por mes
               fechaPagoReal: {}   // clave = 'YYYY-M'
+            }
+          };
+          setExpenseDetails(updatedDetails);
+          localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+        } else {
+          // Gasto Variable Simple
+          const updatedDetails = {
+            ...expenseDetails,
+            [result.data.id]: {
+              estadoPago: estadoPagoSimple,
+              fechaVencimiento: fechaVencimientoSimple || fecha,
+              fechaPagoReal: estadoPagoSimple === 'Pagado' ? (fechaPagoRealSimple || fecha) : null
             }
           };
           setExpenseDetails(updatedDetails);
@@ -716,8 +812,7 @@ export default function ExpensesModule() {
 
   // --- HANDLER PARA REGISTRAR PAGO DE FACTURA ---
   const handleRegisterPayment = async (expId, esFijo = false) => {
-    const detail = expenseDetails[expId];
-    if (!detail) return;
+    const detail = expenseDetails[expId] || {};
 
     const mesKey = `${selectedYear}-${selectedMonth}`;
 
@@ -900,57 +995,114 @@ export default function ExpensesModule() {
 
               {/* Recurrencia (Solo si no es Factura) */}
               {!isFacturaProveedor ? (
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Recurrencia</label>
-                  <div className="flex bg-slate-100 p-1 rounded-xl">
-                    <button
-                      type="button"
-                      onClick={() => setRecurrencia('Variable')}
-                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                        recurrencia === 'Variable' 
-                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      Variable (Único)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRecurrencia('Fijo')}
-                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                        recurrencia === 'Fijo' 
-                          ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      Fijo (Mensual)
-                    </button>
+                <>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Recurrencia</label>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setRecurrencia('Variable')}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                          recurrencia === 'Variable' 
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Variable (Único)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRecurrencia('Fijo')}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                          recurrencia === 'Fijo' 
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Fijo (Mensual)
+                      </button>
+                    </div>
+
+                    {/* Día de vencimiento para gastos fijos */}
+                    {recurrencia === 'Fijo' && (
+                      <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                        <label className="text-xs font-bold text-amber-700 uppercase block mb-1.5 flex items-center gap-1.5">
+                          <Clock size={12} />
+                          Día de vencimiento en el mes (opcional)
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="31"
+                            value={diaVencimientoFijo}
+                            onChange={e => setDiaVencimientoFijo(e.target.value)}
+                            placeholder="Ej: 5 (pago el día 5)"
+                            className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-amber-400 outline-none"
+                          />
+                        </div>
+                        <p className="text-[10px] text-amber-600 font-medium mt-1.5">
+                          🟡 Aparecerá en el semáforo de Cuentas por Pagar cada mes.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Día de vencimiento para gastos fijos */}
-                  {recurrencia === 'Fijo' && !isFacturaProveedor && (
-                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                      <label className="text-xs font-bold text-amber-700 uppercase block mb-1.5 flex items-center gap-1.5">
-                        <Clock size={12} />
-                        Día de vencimiento en el mes (opcional)
-                      </label>
-                      <div className="flex items-center gap-2">
+                  {/* Estado de Pago para Egresos Simples */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Estado del Pago</label>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setEstadoPagoSimple('Pagado')}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                          estadoPagoSimple === 'Pagado' 
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Pagado
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEstadoPagoSimple('Pendiente')}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                          estadoPagoSimple === 'Pendiente' 
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Pendiente
+                      </button>
+                    </div>
+
+                    {/* Fecha de Pago Real (si es variable y está Pagado) */}
+                    {recurrencia === 'Variable' && estadoPagoSimple === 'Pagado' && (
+                      <div className="mt-3">
+                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Fecha de Pago Real</label>
                         <input
-                          type="number"
-                          min="1"
-                          max="31"
-                          value={diaVencimientoFijo}
-                          onChange={e => setDiaVencimientoFijo(e.target.value)}
-                          placeholder="Ej: 5 (pago el día 5)"
-                          className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-amber-400 outline-none"
+                          type="date"
+                          value={fechaPagoRealSimple}
+                          onChange={(e) => setFechaPagoRealSimple(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
                         />
                       </div>
-                      <p className="text-[10px] text-amber-600 font-medium mt-1.5">
-                        🟡 Aparecerá en el semáforo de Cuentas por Pagar cada mes.
-                      </p>
-                    </div>
-                  )}
-                </div>
+                    )}
+
+                    {/* Fecha de Vencimiento (si es variable y está Pendiente) */}
+                    {recurrencia === 'Variable' && estadoPagoSimple === 'Pendiente' && (
+                      <div className="mt-3">
+                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Fecha de Vencimiento</label>
+                        <input
+                          type="date"
+                          value={fechaVencimientoSimple}
+                          onChange={(e) => setFechaVencimientoSimple(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </>
               ) : (
                 /* Si es Factura, mostramos el Proveedor */
                 <div>
@@ -1367,33 +1519,114 @@ export default function ExpensesModule() {
 
                   {/* Recurrencia (Solo si no es Factura) */}
                   {!isFacturaProveedor ? (
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Recurrencia</label>
-                      <div className="flex bg-slate-100 p-1 rounded-xl">
-                        <button
-                          type="button"
-                          onClick={() => setRecurrencia('Variable')}
-                          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                            recurrencia === 'Variable' 
-                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          Variable (Único)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRecurrencia('Fijo')}
-                          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-                            recurrencia === 'Fijo' 
-                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          Fijo (Mensual)
-                        </button>
+                    <>
+                      <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Tipo de Recurrencia</label>
+                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => setRecurrencia('Variable')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                              recurrencia === 'Variable' 
+                                ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                                : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            Variable (Único)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRecurrencia('Fijo')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                              recurrencia === 'Fijo' 
+                                ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                                : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            Fijo (Mensual)
+                          </button>
+                        </div>
                       </div>
-                    </div>
+
+                      {/* Estado de Pago para Egresos Simples (Edición) */}
+                      <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Estado del Pago</label>
+                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => setEstadoPagoSimple('Pagado')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                              estadoPagoSimple === 'Pagado' 
+                                ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                                : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            Pagado
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEstadoPagoSimple('Pendiente')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                              estadoPagoSimple === 'Pendiente' 
+                                ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                                : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            Pendiente
+                          </button>
+                        </div>
+
+                        {/* Fecha de Pago Real (si es variable y está Pagado) */}
+                        {recurrencia === 'Variable' && estadoPagoSimple === 'Pagado' && (
+                          <div className="mt-3">
+                            <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Fecha de Pago Real</label>
+                            <input
+                              type="date"
+                              value={fechaPagoRealSimple}
+                              onChange={(e) => setFechaPagoRealSimple(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:ring-2 focus:ring-amber-500 outline-none"
+                            />
+                          </div>
+                        )}
+
+                        {/* Fecha de Vencimiento (si es variable y está Pendiente) */}
+                        {recurrencia === 'Variable' && estadoPagoSimple === 'Pendiente' && (
+                          <div className="mt-3">
+                            <label className="text-xs font-bold text-slate-500 uppercase block mb-1.5">Fecha de Vencimiento</label>
+                            <input
+                              type="date"
+                              value={fechaVencimientoSimple}
+                              onChange={(e) => setFechaVencimientoSimple(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-semibold focus:ring-2 focus:ring-amber-500 outline-none"
+                            />
+                          </div>
+                        )}
+
+                        {/* Día de vencimiento para fijos */}
+                        {recurrencia === 'Fijo' && (
+                          <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                            <label className="text-xs font-bold text-amber-700 uppercase block mb-1.5 flex items-center gap-1.5">
+                              <Clock size={12} />
+                              Día de vencimiento en el mes (opcional)
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="1"
+                                max="31"
+                                value={diaVencimientoFijo}
+                                onChange={e => setDiaVencimientoFijo(e.target.value)}
+                                placeholder="Ej: 5 (pago el día 5)"
+                                className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-amber-400 outline-none"
+                              />
+                            </div>
+                            <p className="text-[10px] text-amber-600 font-medium mt-1.5">
+                              🟡 Aparecerá en el semáforo de Cuentas por Pagar cada mes.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </>
                   ) : (
                     /* Si es Factura, mostramos el Proveedor */
                     <div>
