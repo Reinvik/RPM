@@ -50,10 +50,18 @@ const DonutLabel = ({ cx, cy, total }) => (
 );
 
 // ─────────────────────────────────────────────────────────────────────
-export default function ExpensesReport({ allExpenses, selectedMonth, selectedYear }) {
-  const [filterClasif, setFilterClasif]     = useState('OPEX');   // 'OPEX' | 'CAPEX' | 'Todos'
+export default function ExpensesReport({ allExpenses, selectedMonth, selectedYear, capexCategories = [] }) {
+  const [filterClasif, setFilterClasif]     = useState('Todos');  // 'OPEX' | 'CAPEX' | 'Todos'
   const [filterCategoria, setFilterCategoria] = useState('Todas');
-  const [chartMode, setChartMode]           = useState('donut');   // 'donut' | 'barras' | 'linea'
+  const [chartMode, setChartMode]           = useState('donut');  // 'donut' | 'barras' | 'linea'
+
+  // Helper de clasificación (igual lógica que ExpensesModule)
+  const isCapex = (e) => capexCategories.includes(e.categoria);
+  const matchClasif = (e) => {
+    if (filterClasif === 'Todos') return true;
+    if (filterClasif === 'CAPEX') return isCapex(e);
+    return !isCapex(e); // OPEX
+  };
 
   // ── 1. Gastos del mes seleccionado ───────────────────────────────
   const monthExpenses = useMemo(() => {
@@ -74,19 +82,19 @@ export default function ExpensesReport({ allExpenses, selectedMonth, selectedYea
   // ── 3. Categorías disponibles en el mes ─────────────────────────
   const categories = useMemo(() => {
     const base = monthExpenses
-      .filter(e => filterClasif === 'Todos' || e.clasificacion === filterClasif)
+      .filter(e => matchClasif(e))
       .map(e => e.categoria);
     return ['Todas', ...Array.from(new Set(base)).sort()];
-  }, [monthExpenses, filterClasif]);
+  }, [monthExpenses, filterClasif, capexCategories]);
 
   // ── 4. Gastos filtrados para gráfico donut/ranking ──────────────
   const filtered = useMemo(() => {
     return monthExpenses.filter(e => {
-      const okClasif = filterClasif === 'Todos' || e.clasificacion === filterClasif;
+      const okClasif = matchClasif(e);
       const okCat    = filterCategoria === 'Todas' || e.categoria === filterCategoria;
       return okClasif && okCat;
     });
-  }, [monthExpenses, filterClasif, filterCategoria]);
+  }, [monthExpenses, filterClasif, filterCategoria, capexCategories]);
 
   // ── 5. Agrupado por categoría ─────────────────────────────────
   const byCategory = useMemo(() => {
@@ -107,7 +115,7 @@ export default function ExpensesReport({ allExpenses, selectedMonth, selectedYea
       const gastos = yearExpenses
         .filter(e => {
           const d = new Date(e.fecha);
-          const okClasif = filterClasif === 'Todos' || e.clasificacion === filterClasif;
+          const okClasif = matchClasif(e);
           const okCat    = filterCategoria === 'Todas' || e.categoria === filterCategoria;
           return d.getMonth() === idx && okClasif && okCat;
         })
@@ -115,7 +123,7 @@ export default function ExpensesReport({ allExpenses, selectedMonth, selectedYea
       return { mes: m, total: gastos, isSelected: idx === selectedMonth };
     });
     return data;
-  }, [yearExpenses, filterClasif, filterCategoria, selectedMonth]);
+  }, [yearExpenses, filterClasif, filterCategoria, selectedMonth, capexCategories]);
 
   // ── 7. Promedio anual y comparativa ──────────────────────────
   const mesesConDatos = monthlyEvolution.filter(m => m.total > 0);

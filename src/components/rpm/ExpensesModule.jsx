@@ -2090,6 +2090,7 @@ export default function ExpensesModule() {
           allExpenses={allExpenses}
           selectedMonth={selectedMonth}
           selectedYear={selectedYear}
+          capexCategories={capexCategories}
         />
       )}
 
