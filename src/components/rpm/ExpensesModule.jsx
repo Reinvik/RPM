@@ -124,6 +124,8 @@ export default function ExpensesModule() {
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [numeroFactura, setNumeroFactura] = useState('');
   const [fechaVencimientoFactura, setFechaVencimientoFactura] = useState('');
+  // Día de vencimiento para gastos fijos (1-31)
+  const [diaVencimientoFijo, setDiaVencimientoFijo] = useState('');
 
 
   // Helper para sumar días a una fecha
@@ -317,15 +319,19 @@ export default function ExpensesModule() {
 
   // --- useMemo DE CUENTAS POR PAGAR Y PROVEEDORES ---
   const invoices = React.useMemo(() => {
+    const hoyStr = new Date().toISOString().split('T')[0];
     const list = [];
     const expensesList = allExpenses || [];
+
+    // 1. Facturas de proveedor (con expenseDetails)
     expensesList.forEach(exp => {
       const detail = expenseDetails[exp.id];
-      if (detail) {
+      if (detail && detail.numeroFactura) {
         const supplier = suppliers.find(s => s.id === detail.supplierId);
         list.push({
           ...exp,
           detail,
+          tipoEntrada: 'factura',
           supplierName: supplier ? supplier.nombre : 'Proveedor Desconocido',
           supplierRut: supplier ? supplier.rut : '',
           numeroFactura: detail.numeroFactura,
@@ -335,8 +341,43 @@ export default function ExpensesModule() {
         });
       }
     });
+
+    // 2. Gastos Fijos con día de vencimiento configurado
+    expensesList.forEach(exp => {
+      if (exp.tipo !== 'Fijo') return;
+      const detail = expenseDetails[exp.id];
+      // Solo los que tienen diaVencimiento pero NO son facturas de proveedor
+      if (!detail || detail.numeroFactura) return;
+      if (!detail.diaVencimiento) return;
+
+      // Calcular la fecha de vencimiento para el mes/año del gasto fijo
+      const expDate = new Date(exp.fecha);
+      const yr = expDate.getFullYear();
+      const mo = expDate.getMonth(); // 0-indexed
+      const dia = Number(detail.diaVencimiento);
+      // Usar el mes actual si el fijo está activo (heredado)
+      const vencYear = selectedYear;
+      const vencMonth = selectedMonth;
+      const daysInMonth = new Date(vencYear, vencMonth + 1, 0).getDate();
+      const diaReal = Math.min(dia, daysInMonth);
+      const fechaVenc = `${vencYear}-${String(vencMonth + 1).padStart(2,'0')}-${String(diaReal).padStart(2,'0')}`;
+
+      list.push({
+        ...exp,
+        detail,
+        tipoEntrada: 'fijo',
+        supplierName: exp.categoria,
+        supplierRut: '',
+        numeroFactura: `Fijo-${exp.id.slice(-4)}`,
+        fechaVencimiento: fechaVenc,
+        estadoPago: detail.estadoPago?.[`${vencYear}-${vencMonth}`] || 'Pendiente',
+        fechaPagoReal: detail.fechaPagoReal?.[`${vencYear}-${vencMonth}`] || null,
+        esFijo: true,
+      });
+    });
+
     return list.sort((a, b) => new Date(a.fechaVencimiento) - new Date(b.fechaVencimiento));
-  }, [allExpenses, expenseDetails, suppliers]);
+  }, [allExpenses, expenseDetails, suppliers, selectedMonth, selectedYear]);
 
   const filteredInvoices = React.useMemo(() => {
     const q = searchInvoice.toLowerCase().trim();
@@ -573,8 +614,22 @@ export default function ExpensesModule() {
           fecha,
           aplica_credito_iva: aplicaCreditoIva
         });
-        
         if (result.error) throw result.error;
+
+        // Si es Fijo con día de vencimiento, guardar en details
+        if (recurrencia === 'Fijo' && diaVencimientoFijo) {
+          const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+          const updatedDetails = {
+            ...expenseDetails,
+            [result.data.id]: {
+              diaVencimiento: diaVencimientoFijo,
+              estadoPago: {},     // clave = 'YYYY-M' por mes
+              fechaPagoReal: {}   // clave = 'YYYY-M'
+            }
+          };
+          setExpenseDetails(updatedDetails);
+          localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+        }
       }
       
       // Resetear campos
@@ -594,6 +649,7 @@ export default function ExpensesModule() {
       setSelectedSupplierId('');
       setNumeroFactura('');
       setFechaVencimientoFactura('');
+      setDiaVencimientoFijo('');
     } catch (err) {
       console.error(err);
       alert("Error al guardar egreso: " + (err.message || err));
@@ -659,25 +715,37 @@ export default function ExpensesModule() {
   };
 
   // --- HANDLER PARA REGISTRAR PAGO DE FACTURA ---
-  const handleRegisterPayment = async (expId) => {
+  const handleRegisterPayment = async (expId, esFijo = false) => {
     const detail = expenseDetails[expId];
     if (!detail) return;
 
+    const mesKey = `${selectedYear}-${selectedMonth}`;
+
     openConfirm({
-      title: 'Registrar Pago',
-      message: '¿Confirmas que deseas registrar el pago de esta factura hoy?\nSe marcará como Pagada con la fecha de hoy.',
+      title: esFijo ? 'Registrar Pago de Gasto Fijo' : 'Registrar Pago de Factura',
+      message: esFijo
+        ? `¿Confirmas el pago de este gasto fijo para ${new Date(selectedYear, selectedMonth).toLocaleString('es-CL', { month: 'long', year: 'numeric' })}?`
+        : '¿Confirmas que deseas registrar el pago de esta factura hoy?\nSe marcará como Pagada con la fecha de hoy.',
       variant: 'success',
       confirmText: 'Sí, registrar pago',
       onConfirm: async () => {
         const detailsKey = `nexus_rpm_expense_details_${companyId}`;
-        const updatedDetails = {
-          ...expenseDetails,
-          [expId]: {
+        let updatedDetail;
+        if (esFijo) {
+          // Para gastos fijos: registrar por mes
+          updatedDetail = {
+            ...detail,
+            estadoPago: { ...(detail.estadoPago || {}), [mesKey]: 'Pagado' },
+            fechaPagoReal: { ...(detail.fechaPagoReal || {}), [mesKey]: new Date().toISOString().split('T')[0] }
+          };
+        } else {
+          updatedDetail = {
             ...detail,
             estadoPago: 'Pagado',
             fechaPagoReal: new Date().toISOString().split('T')[0]
-          }
-        };
+          };
+        }
+        const updatedDetails = { ...expenseDetails, [expId]: updatedDetail };
         setExpenseDetails(updatedDetails);
         localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
         closeConfirm();
@@ -858,6 +926,30 @@ export default function ExpensesModule() {
                       Fijo (Mensual)
                     </button>
                   </div>
+
+                  {/* Día de vencimiento para gastos fijos */}
+                  {recurrencia === 'Fijo' && !isFacturaProveedor && (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                      <label className="text-xs font-bold text-amber-700 uppercase block mb-1.5 flex items-center gap-1.5">
+                        <Clock size={12} />
+                        Día de vencimiento en el mes (opcional)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={diaVencimientoFijo}
+                          onChange={e => setDiaVencimientoFijo(e.target.value)}
+                          placeholder="Ej: 5 (pago el día 5)"
+                          className="w-full bg-white border border-amber-300 rounded-lg p-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-amber-400 outline-none"
+                        />
+                      </div>
+                      <p className="text-[10px] text-amber-600 font-medium mt-1.5">
+                        🟡 Aparecerá en el semáforo de Cuentas por Pagar cada mes.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 /* Si es Factura, mostramos el Proveedor */
@@ -1800,7 +1892,14 @@ export default function ExpensesModule() {
                       return (
                         <tr key={inv.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="py-3.5 px-4">
-                            <span className="font-bold text-slate-800 block">{inv.supplierName}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-800 block">{inv.supplierName}</span>
+                              {inv.esFijo && (
+                                <span className="text-[9px] font-extrabold bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full shrink-0">
+                                  Fijo
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[10px] text-slate-400 block font-semibold">{inv.supplierRut}</span>
                           </td>
                           <td className="py-3.5 px-4 font-mono font-bold text-slate-600">{inv.numeroFactura}</td>
@@ -1838,9 +1937,9 @@ export default function ExpensesModule() {
                             <div className="flex items-center justify-center gap-1.5">
                               {inv.estadoPago === 'Pendiente' && (
                                 <button
-                                  onClick={() => handleRegisterPayment(inv.id)}
+                                  onClick={() => handleRegisterPayment(inv.id, !!inv.esFijo)}
                                   className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors flex items-center gap-1 shrink-0"
-                                  title="Registrar Pago de Factura"
+                                  title={inv.esFijo ? 'Registrar Pago de Gasto Fijo' : 'Registrar Pago de Factura'}
                                 >
                                   <CheckCircle2 size={12} />
                                   <span>Pagar</span>
