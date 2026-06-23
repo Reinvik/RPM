@@ -40,10 +40,10 @@ const CustomTooltip = ({ active, payload, label }) => {
 // ─── Label interior del Donut ─────────────────────────────────────────
 const DonutLabel = ({ cx, cy, total }) => (
   <>
-    <text x={cx} y={cy - 8} textAnchor="middle" className="fill-slate-800" style={{ fontSize: 18, fontWeight: 900 }}>
+    <text x={cx} y={cy} dy="-6px" textAnchor="middle" className="fill-slate-800" style={{ fontSize: 18, fontWeight: 900 }}>
       {fmtM(total)}
     </text>
-    <text x={cx} y={cy + 12} textAnchor="middle" className="fill-slate-400" style={{ fontSize: 10, fontWeight: 600 }}>
+    <text x={cx} y={cy} dy="14px" textAnchor="middle" className="fill-slate-400" style={{ fontSize: 10, fontWeight: 600 }}>
       TOTAL EGRESOS
     </text>
   </>
