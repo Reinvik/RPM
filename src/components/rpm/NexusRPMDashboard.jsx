@@ -168,12 +168,33 @@ export default function NexusRPMDashboard() {
   const resultado  = salesTotal - opexTotal;
   const margenPct  = salesTotal > 0 ? (resultado / salesTotal) * 100 : 0;
 
-  // ── Punto de Equilibrio ──
-  const totalCosts    = fixedCosts + variableCosts;
-  const coveragePct   = totalCosts > 0
-    ? Math.min((salesTotal / totalCosts) * 100, 100)
-    : (salesTotal > 0 ? 100 : 0);
-  const isBreakEven   = salesTotal >= totalCosts;
+  // Helper para identificar si una categoría es de repuestos/insumos directos
+  const isRepuestoCategory = (categoryName) => {
+    if (!categoryName) return false;
+    const name = categoryName.toLowerCase();
+    return name.includes('repuesto') || 
+           name.includes('bateria') || 
+           name.includes('batería') ||
+           name.includes('liqui moly');
+  };
+
+  // Calcular el costo total de los repuestos consumidos este mes
+  const costoRepuestos = useMemo(() => {
+    return (expenses || [])
+      .filter(e => isRepuestoCategory(e.categoria))
+      .reduce((sum, e) => sum + Number(e.monto || 0), 0);
+  }, [expenses]);
+
+  // ── Punto de Equilibrio Ajustado (Excluyendo Repuestos) ──
+  const netSales       = Math.max(0, salesTotal - costoRepuestos);
+  const netVariableCosts = Math.max(0, variableCosts - costoRepuestos);
+  const totalCosts     = fixedCosts + variableCosts; // Mantener totalCosts para retrocompatibilidad
+  const netTotalCosts  = fixedCosts + netVariableCosts;
+
+  const coveragePct   = netTotalCosts > 0
+    ? Math.min((netSales / netTotalCosts) * 100, 100)
+    : (netSales > 0 ? 100 : 0);
+  const isBreakEven   = netSales >= netTotalCosts;
 
   // ── Análisis Temporal (día del mes) ──
   const today        = new Date();
@@ -192,11 +213,11 @@ export default function NexusRPMDashboard() {
       : 0;
   const daysPct      = daysInMonth > 0 ? (daysElapsed / daysInMonth) * 100 : 0;
 
-  // Ritmo diario actual (ventas / días transcurridos)
-  const dailyRate        = daysElapsed > 0 ? salesTotal / daysElapsed : 0;
-  // Ritmo diario requerido para llegar al equilibrio
-  const requiredDailyRate = daysInMonth > 0 ? totalCosts / daysInMonth : 0;
-  // Proyección de ventas a fin de mes
+  // Ritmo diario actual (ventas netas / días transcurridos)
+  const dailyRate        = daysElapsed > 0 ? netSales / daysElapsed : 0;
+  // Ritmo diario requerido para llegar al equilibrio (costos netos / días del mes)
+  const requiredDailyRate = daysInMonth > 0 ? netTotalCosts / daysInMonth : 0;
+  // Proyección de ventas netas a fin de mes
   const projectedMonthEnd = dailyRate * daysInMonth;
   // ¿Vamos adelantados o atrasados respecto al tiempo?
   // cobertura% vs daysPct -> si cobertura > daysPct estamos ahead
@@ -328,12 +349,15 @@ export default function NexusRPMDashboard() {
 
           <div className="grid grid-cols-2 gap-6 mb-5">
             <div>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Ventas Actuales (Bruto)</p>
-              <p className="text-xl font-black text-slate-900">${fmt(salesTotal)}</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Ventas Actuales (Neto)*</p>
+              <p className="text-xl font-black text-slate-900">${fmt(netSales)}</p>
+              {costoRepuestos > 0 && (
+                <p className="text-[9px] text-slate-400 mt-0.5 font-medium">Excluye repuestos: ${fmt(costoRepuestos)}</p>
+              )}
             </div>
             <div>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Meta de Costos Totales</p>
-              <p className="text-xl font-black text-slate-900">${fmt(totalCosts)}</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Meta de Costos Netos</p>
+              <p className="text-xl font-black text-slate-900">${fmt(netTotalCosts)}</p>
             </div>
           </div>
 
@@ -359,7 +383,7 @@ export default function NexusRPMDashboard() {
           }`}>
             {isBreakEven
               ? <><CheckCircle size={15} /> Operando por sobre el Punto de Equilibrio (Rentable).</>
-              : <><AlertTriangle size={15} /> Aún bajo el Punto de Equilibrio — faltan ${fmt(totalCosts - salesTotal)} en ventas.</>
+              : <><AlertTriangle size={15} /> Aún bajo el Punto de Equilibrio — faltan ${fmt(netTotalCosts - netSales)} en ventas netas.</>
             }
           </div>
 
@@ -370,10 +394,15 @@ export default function NexusRPMDashboard() {
               <span className="font-bold text-slate-800">${fmt(fixedCosts)}</span>
             </div>
             <div className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg">
-              <span className="text-slate-500 font-medium">Costos Variables</span>
-              <span className="font-bold text-slate-800">${fmt(variableCosts)}</span>
+              <span className="text-slate-500 font-medium">Costos Variables*</span>
+              <span className="font-bold text-slate-800">${fmt(netVariableCosts)}</span>
             </div>
           </div>
+          {costoRepuestos > 0 && (
+            <p className="text-[9px] text-slate-400 mt-2 text-center">
+              * Excluye costo directo de repuestos e insumos para la venta: ${fmt(costoRepuestos)}
+            </p>
+          )}
 
           {/* Análisis temporal — sólo cuando hay datos de días */}
           {daysElapsed > 0 && (
