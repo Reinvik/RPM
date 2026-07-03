@@ -14,7 +14,8 @@ import {
   DollarSign,
   BarChart3,
   AlertCircle,
-  ChevronRight
+  ChevronRight,
+  X
 } from 'lucide-react';
 import { useNexusContext } from '../../context/NexusContext';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
@@ -147,9 +148,11 @@ export default function NexusRPMDashboard() {
 
   const { data, loading, refetchData } = useNexusRPM();
   const [showMechanics, setShowMechanics] = useState(false);
+  const [showIncomeModal, setShowIncomeModal] = useState(false);
+  const [incomeFilter, setIncomeFilter] = useState('all'); // 'all' | 'taller' | 'pos'
 
   // ── Desestructurar data (siempre, sin condicional) ──
-  const { salesTotal, fixedCosts, variableCosts, expenses, mechanics } = data;
+  const { salesTotal, fixedCosts, variableCosts, expenses, mechanics, sales } = data;
 
   // ── Cálculos de IVA ──
   const gastosConIva = expenses
@@ -231,6 +234,39 @@ export default function NexusRPMDashboard() {
   }), [salesTotal, opexTotal, resultado, margenPct, ivaDif, expenses, mechanics]);
 
 
+  const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+  const incomeBreakdown = useMemo(() => {
+    const list = sales || [];
+    
+    const tallerSales = list.filter(s => s.type === 'Servicio Taller');
+    const tallerBoletas = tallerSales.filter(s => s.document_type === 'Boleta');
+    const tallerFacturas = tallerSales.filter(s => s.document_type === 'Factura');
+    const totalTallerBoletas = tallerBoletas.reduce((sum, s) => sum + s.total, 0);
+    const totalTallerFacturas = tallerFacturas.reduce((sum, s) => sum + s.total, 0);
+    
+    const posSales = list.filter(s => s.type === 'Sala de Ventas');
+    const posBoletas = posSales.filter(s => s.document_type === 'Boleta');
+    const posFacturas = posSales.filter(s => s.document_type === 'Factura');
+    const totalPosBoletas = posBoletas.reduce((sum, s) => sum + s.total, 0);
+    const totalPosFacturas = posFacturas.reduce((sum, s) => sum + s.total, 0);
+
+    return {
+      taller: {
+        total: totalTallerBoletas + totalTallerFacturas,
+        count: tallerSales.length,
+        boletas: { total: totalTallerBoletas, count: tallerBoletas.length },
+        facturas: { total: totalTallerFacturas, count: tallerFacturas.length }
+      },
+      pos: {
+        total: totalPosBoletas + totalPosFacturas,
+        count: posSales.length,
+        boletas: { total: totalPosBoletas, count: posBoletas.length },
+        facturas: { total: totalPosFacturas, count: posFacturas.length }
+      }
+    };
+  }, [sales]);
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
@@ -262,16 +298,22 @@ export default function NexusRPMDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
 
         {/* Ingresos del Mes */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+        <div 
+          onClick={() => setShowIncomeModal(true)}
+          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm relative overflow-hidden group hover:shadow-md hover:border-blue-300 cursor-pointer transition-all duration-200 active:scale-[0.98]"
+          title="Pinchar para ver el desglose de ingresos"
+        >
           <div className="absolute -top-4 -right-4 w-20 h-20 bg-blue-500/5 rounded-full blur-xl group-hover:bg-blue-500/10 transition-all"></div>
           <div className="flex justify-between items-start mb-3">
             <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Ingresos del Mes</p>
-            <span className="p-1.5 bg-blue-50 rounded-lg">
+            <span className="p-1.5 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
               <ArrowUpRight size={14} className="text-blue-600" />
             </span>
           </div>
           <p className="text-2xl font-black text-slate-900 leading-none">${fmt(salesTotal)}</p>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">Total recaudado en facturas y boletas de clientes.</p>
+          <p className="text-[10px] text-slate-400 mt-2 font-semibold flex items-center gap-1">
+            Total facturas y boletas • <span className="text-blue-650 font-bold group-hover:underline">Ver desglose</span>
+          </p>
         </div>
 
         {/* Egresos Totales */}
@@ -629,6 +671,171 @@ export default function NexusRPMDashboard() {
         )}
       </div>
 
+      {/* Modal de Desglose de Ingresos */}
+      {showIncomeModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-150 shadow-2xl w-full max-w-2xl relative overflow-hidden transition-all duration-300 transform scale-100 max-h-[90vh] flex flex-col">
+            
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
+                  <BarChart3 className="text-blue-600" size={18} />
+                  Desglose de Ingresos del Período
+                </h3>
+                <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase tracking-wider">
+                  {MONTHS[selectedMonth]} {selectedYear} • {companyName || 'Tu taller'}
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowIncomeModal(false)}
+                className="text-slate-400 hover:text-slate-650 hover:bg-slate-100 p-1.5 rounded-lg transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-700">
+              
+              {/* Tarjetas de Resumen */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                {/* Taller */}
+                <div className="bg-gradient-to-br from-blue-50/60 to-indigo-50/20 border border-blue-100 rounded-2xl p-4 shadow-sm">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-[10px] font-extrabold text-blue-700 uppercase tracking-wider">Servicios de Taller</span>
+                    <span className="text-[9px] font-bold bg-blue-100/80 text-blue-700 px-2 py-0.5 rounded-full">
+                      {incomeBreakdown.taller.count} tickets
+                    </span>
+                  </div>
+                  <p className="text-2xl font-black text-slate-900 mb-4">${fmt(incomeBreakdown.taller.total)}</p>
+                  
+                  <div className="space-y-2 text-xs border-t border-blue-100/80 pt-3">
+                    <div className="flex justify-between font-semibold text-slate-600">
+                      <span>Boletas ({incomeBreakdown.taller.boletas.count})</span>
+                      <span className="text-slate-850 font-bold">${fmt(incomeBreakdown.taller.boletas.total)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-slate-600">
+                      <span>Facturas ({incomeBreakdown.taller.facturas.count})</span>
+                      <span className="text-slate-850 font-bold">${fmt(incomeBreakdown.taller.facturas.total)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sala de Ventas */}
+                <div className="bg-gradient-to-br from-emerald-50/60 to-teal-50/20 border border-emerald-100 rounded-2xl p-4 shadow-sm">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wider">Sala de Ventas (POS)</span>
+                    <span className="text-[9px] font-bold bg-emerald-100/80 text-emerald-700 px-2 py-0.5 rounded-full">
+                      {incomeBreakdown.pos.count} ventas
+                    </span>
+                  </div>
+                  <p className="text-2xl font-black text-slate-900 mb-4">${fmt(incomeBreakdown.pos.total)}</p>
+                  
+                  <div className="space-y-2 text-xs border-t border-emerald-100/80 pt-3">
+                    <div className="flex justify-between font-semibold text-slate-600">
+                      <span>Boletas ({incomeBreakdown.pos.boletas.count})</span>
+                      <span className="text-slate-850 font-bold">${fmt(incomeBreakdown.pos.boletas.total)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-slate-600">
+                      <span>Facturas ({incomeBreakdown.pos.facturas.count})</span>
+                      <span className="text-slate-850 font-bold">${fmt(incomeBreakdown.pos.facturas.total)}</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Listado Detallado de Transacciones */}
+              <div>
+                <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+                  <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Historial de Ingresos del Mes</h4>
+                  
+                  {/* Filtro rápido */}
+                  <div className="flex bg-slate-100 p-0.5 rounded-lg text-[9px] font-extrabold border border-slate-150">
+                    <button 
+                      onClick={() => setIncomeFilter('all')}
+                      className={`px-3 py-1 rounded-md transition-all ${incomeFilter === 'all' ? 'bg-white text-slate-850 shadow-sm border border-slate-105' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      Todos
+                    </button>
+                    <button 
+                      onClick={() => setIncomeFilter('taller')}
+                      className={`px-3 py-1 rounded-md transition-all ${incomeFilter === 'taller' ? 'bg-white text-slate-850 shadow-sm border border-slate-105' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      Taller
+                    </button>
+                    <button 
+                      onClick={() => setIncomeFilter('pos')}
+                      className={`px-3 py-1 rounded-md transition-all ${incomeFilter === 'pos' ? 'bg-white text-slate-850 shadow-sm border border-slate-105' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      POS
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tabla/Lista */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto text-xs">
+                  {sales && sales.length > 0 ? (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-400 font-extrabold uppercase tracking-wider text-[9px] border-b border-slate-200">
+                          <th className="py-2.5 px-4">Fecha</th>
+                          <th className="py-2.5 px-4">Tipo</th>
+                          <th className="py-2.5 px-4">Documento</th>
+                          <th className="py-2.5 px-4 text-right">Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-750 font-semibold">
+                        {sales
+                          .filter(s => {
+                            if (incomeFilter === 'all') return true;
+                            if (incomeFilter === 'taller') return s.type === 'Servicio Taller';
+                            return s.type === 'Sala de Ventas';
+                          })
+                          .sort((a, b) => b.fecha.localeCompare(a.fecha))
+                          .map((s, idx) => (
+                            <tr key={s.id || idx} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="py-2.5 px-4 text-slate-505 font-semibold">
+                                {new Date(s.fecha + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}
+                              </td>
+                              <td className="py-2.5 px-4">
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold ${s.type === 'Servicio Taller' ? 'bg-blue-50 text-blue-750 border border-blue-150' : 'bg-emerald-50 text-emerald-750 border border-emerald-150'}`}>
+                                  {s.type}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-4 text-slate-550 font-semibold">{s.document_type}</td>
+                              <td className="py-2.5 px-4 text-right font-black text-slate-800">${fmt(s.total)}</td>
+                            </tr>
+                          ))
+                        }
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="text-slate-400 py-12 text-center font-medium bg-slate-50/50">
+                      No se registraron ingresos en este período.
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button 
+                onClick={() => setShowIncomeModal(false)}
+                className="bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs px-5 py-2 rounded-xl transition-all shadow-sm active:scale-95"
+              >
+                Cerrar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );
