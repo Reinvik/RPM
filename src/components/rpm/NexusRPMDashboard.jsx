@@ -166,11 +166,6 @@ export default function NexusRPMDashboard() {
   const ivaDif       = ivaDebito - ivaCredito;
   const esRemanente  = ivaDif < 0;
 
-  // ── Egresos del período (sin sueldos directos) ──
-  const opexTotal  = fixedCosts + variableCosts;
-  const resultado  = salesTotal - opexTotal;
-  const margenPct  = salesTotal > 0 ? (resultado / salesTotal) * 100 : 0;
-
   // Helper para identificar si una categoría es de repuestos/insumos directos
   const isRepuestoCategory = (categoryName) => {
     if (!categoryName) return false;
@@ -188,12 +183,19 @@ export default function NexusRPMDashboard() {
       .reduce((sum, e) => sum + Number(e.monto || 0), 0);
   }, [expenses]);
 
-  // ── Punto de Equilibrio Ajustado (Excluyendo Repuestos) ──
+  // Cifras Netas (excluyendo repuestos e insumos directos)
   const netSales       = Math.max(0, salesTotal - costoRepuestos);
   const netVariableCosts = Math.max(0, variableCosts - costoRepuestos);
-  const totalCosts     = fixedCosts + variableCosts; // Mantener totalCosts para retrocompatibilidad
   const netTotalCosts  = fixedCosts + netVariableCosts;
+  const netOpexTotal   = fixedCosts + netVariableCosts;
 
+  // ── Egresos del período (sin sueldos directos) ──
+  const opexTotal  = fixedCosts + variableCosts;
+  const resultado  = salesTotal - opexTotal; // El resultado final de caja sigue siendo Ventas - Egresos
+  const netMargenPct  = netSales > 0 ? (resultado / netSales) * 100 : 0;
+
+  // ── Punto de Equilibrio Ajustado (Excluyendo Repuestos) ──
+  const totalCosts     = fixedCosts + variableCosts; // Mantener para compatibilidad
   const coveragePct   = netTotalCosts > 0
     ? Math.min((netSales / netTotalCosts) * 100, 100)
     : (netSales > 0 ? 100 : 0);
@@ -229,9 +231,9 @@ export default function NexusRPMDashboard() {
 
   // ── Insights del Asesor (useMemo SIEMPRE antes del early return) ──
   const insights = useMemo(() => buildInsights({
-    salesTotal, opexTotal, resultado, margenPct,
+    salesTotal: netSales, opexTotal: netOpexTotal, resultado, margenPct: netMargenPct,
     ivaAPagar: ivaDif, expenses, mechanics
-  }), [salesTotal, opexTotal, resultado, margenPct, ivaDif, expenses, mechanics]);
+  }), [netSales, netOpexTotal, resultado, netMargenPct, ivaDif, expenses, mechanics]);
 
 
   const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -310,9 +312,9 @@ export default function NexusRPMDashboard() {
               <ArrowUpRight size={14} className="text-blue-600" />
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-900 leading-none">${fmt(salesTotal)}</p>
+          <p className="text-2xl font-black text-slate-900 leading-none">${fmt(netSales)}</p>
           <p className="text-[10px] text-slate-400 mt-2 font-semibold flex items-center gap-1">
-            Total facturas y boletas • <span className="text-blue-650 font-bold group-hover:underline">Ver desglose</span>
+            {costoRepuestos > 0 ? `Neto (Bruto: $${fmt(salesTotal)})` : 'Total facturas y boletas'} • <span className="text-blue-650 font-bold group-hover:underline">Ver desglose</span>
           </p>
         </div>
 
@@ -325,9 +327,9 @@ export default function NexusRPMDashboard() {
               <ArrowDownRight size={14} className="text-rose-600" />
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-900 leading-none">${fmt(opexTotal)}</p>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">
-            OPEX: ${fmt(fixedCosts + variableCosts)} &nbsp;·&nbsp; CAPEX: $0
+          <p className="text-2xl font-black text-slate-900 leading-none">${fmt(netOpexTotal)}</p>
+          <p className="text-[10px] text-slate-400 mt-2 font-semibold">
+            {costoRepuestos > 0 ? `OPEX Neto (Bruto: $${fmt(opexTotal)})` : `OPEX: $${fmt(opexTotal)}`} &nbsp;·&nbsp; CAPEX: $0
           </p>
         </div>
 
@@ -349,7 +351,7 @@ export default function NexusRPMDashboard() {
             {resultado >= 0 ? '+' : ''}${fmt(resultado)}
           </p>
           <p className="text-[10px] text-slate-500 mt-2 font-medium">
-            Margen neto del mes: <strong className={resultado >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{margenPct.toFixed(1)}%</strong>
+            Margen neto del mes: <strong className={resultado >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{netMargenPct.toFixed(1)}%</strong>
           </p>
         </div>
 
