@@ -171,6 +171,7 @@ export default function NexusRPMDashboard() {
     if (!categoryName) return false;
     const name = categoryName.toLowerCase();
     return name.includes('repuesto') || 
+           name.includes('respuesto') || 
            name.includes('bateria') || 
            name.includes('batería') ||
            name.includes('liqui moly');
