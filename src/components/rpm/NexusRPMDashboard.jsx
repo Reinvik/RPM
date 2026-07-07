@@ -295,6 +295,20 @@ export default function NexusRPMDashboard() {
         <p className="text-xs text-slate-400 mt-0.5 font-medium">{companyName || 'Tu empresa'}</p>
       </div>
 
+      {/* Banner Informativo de Exclusión de Costo de Repuestos */}
+      {costoRepuestos > 0 && (
+        <div className="bg-amber-50/50 border border-amber-200/70 rounded-2xl p-4 flex items-start gap-3 shadow-sm relative overflow-hidden transition-all duration-300">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-lg"></div>
+          <Info size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-slate-700 leading-relaxed">
+            <p className="font-extrabold text-amber-800 uppercase tracking-wider text-[10px] mb-1">Ajuste de Rentabilidad y Punto de Equilibrio Activo</p>
+            <p>
+              Para reflejar la salud financiera real de la estructura del taller, se ha excluido el costo de repuestos e insumos directos (<strong>${fmt(costoRepuestos)}</strong>) de los **Ingresos del Mes** y de los **Egresos Totales**. Esto evita que las compras para clientes distorsionen y aumenten la meta de supervivencia del local.
+            </p>
+          </div>
+        </div>
+      )}
+
 
       {/* ── 4 KPIs Principales ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -443,9 +457,12 @@ export default function NexusRPMDashboard() {
             </div>
           </div>
           {costoRepuestos > 0 && (
-            <p className="text-[9px] text-slate-400 mt-2 text-center">
-              * Excluye costo directo de repuestos e insumos para la venta: ${fmt(costoRepuestos)}
-            </p>
+            <div className="mt-4 p-3 bg-amber-50/50 border border-amber-200/50 rounded-xl flex items-start gap-2 text-slate-700 text-[11px] leading-relaxed">
+              <Info size={14} className="text-amber-600 shrink-0 mt-0.5" />
+              <p>
+                <strong>Exclusión de repuestos activa:</strong> Para evitar distorsionar el Punto de Equilibrio de tu estructura, se han descontado <strong>${fmt(costoRepuestos)}</strong> (compras de repuestos para clientes) tanto de las Ventas Actuales (Netas) como de los Costos Variables de este mes.
+              </p>
+            </div>
           )}
 
           {/* Análisis temporal — sólo cuando hay datos de días */}
