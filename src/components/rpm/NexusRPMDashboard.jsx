@@ -254,6 +254,12 @@ export default function NexusRPMDashboard() {
     const totalPosBoletas = posBoletas.reduce((sum, s) => sum + s.total, 0);
     const totalPosFacturas = posFacturas.reduce((sum, s) => sum + s.total, 0);
 
+    const abonoSales = list.filter(s => s.type === 'Abono');
+    const abonoBoletas = abonoSales.filter(s => s.document_type === 'Boleta');
+    const abonoFacturas = abonoSales.filter(s => s.document_type === 'Factura');
+    const totalAbonoBoletas = abonoBoletas.reduce((sum, s) => sum + s.total, 0);
+    const totalAbonoFacturas = abonoFacturas.reduce((sum, s) => sum + s.total, 0);
+
     return {
       taller: {
         total: totalTallerBoletas + totalTallerFacturas,
@@ -266,6 +272,12 @@ export default function NexusRPMDashboard() {
         count: posSales.length,
         boletas: { total: totalPosBoletas, count: posBoletas.length },
         facturas: { total: totalPosFacturas, count: posFacturas.length }
+      },
+      abonos: {
+        total: totalAbonoBoletas + totalAbonoFacturas,
+        count: abonoSales.length,
+        boletas: { total: totalAbonoBoletas, count: abonoBoletas.length },
+        facturas: { total: totalAbonoFacturas, count: abonoFacturas.length }
       }
     };
   }, [sales]);
@@ -694,7 +706,7 @@ export default function NexusRPMDashboard() {
       {/* Modal de Desglose de Ingresos */}
       {showIncomeModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 overflow-y-auto animate-fade-in">
-          <div className="bg-white rounded-2xl border border-slate-150 shadow-2xl w-full max-w-2xl relative overflow-hidden transition-all duration-300 transform scale-100 max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-2xl border border-slate-150 shadow-2xl w-full max-w-3xl relative overflow-hidden transition-all duration-300 transform scale-100 max-h-[90vh] flex flex-col">
             
             {/* Header */}
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
@@ -719,7 +731,7 @@ export default function NexusRPMDashboard() {
             <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-700">
               
               {/* Tarjetas de Resumen */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 
                 {/* Taller */}
                 <div className="bg-gradient-to-br from-blue-50/60 to-indigo-50/20 border border-blue-100 rounded-2xl p-4 shadow-sm">
@@ -765,6 +777,28 @@ export default function NexusRPMDashboard() {
                   </div>
                 </div>
 
+                {/* Abonos */}
+                <div className="bg-gradient-to-br from-amber-50/60 to-orange-50/20 border border-amber-100 rounded-2xl p-4 shadow-sm">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-[10px] font-extrabold text-amber-700 uppercase tracking-wider">Abonos</span>
+                    <span className="text-[9px] font-bold bg-amber-100/80 text-amber-750 px-2 py-0.5 rounded-full">
+                      {incomeBreakdown.abonos.count} registros
+                    </span>
+                  </div>
+                  <p className="text-2xl font-black text-slate-900 mb-4">${fmt(incomeBreakdown.abonos.total)}</p>
+                  
+                  <div className="space-y-2 text-xs border-t border-amber-100/80 pt-3">
+                    <div className="flex justify-between font-semibold text-slate-600">
+                      <span>Boletas ({incomeBreakdown.abonos.boletas.count})</span>
+                      <span className="text-slate-850 font-bold">${fmt(incomeBreakdown.abonos.boletas.total)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-slate-600">
+                      <span>Facturas ({incomeBreakdown.abonos.facturas.count})</span>
+                      <span className="text-slate-850 font-bold">${fmt(incomeBreakdown.abonos.facturas.total)}</span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
 
               {/* Listado Detallado de Transacciones */}
@@ -792,6 +826,12 @@ export default function NexusRPMDashboard() {
                     >
                       POS
                     </button>
+                    <button 
+                      onClick={() => setIncomeFilter('abono')}
+                      className={`px-3 py-1 rounded-md transition-all ${incomeFilter === 'abono' ? 'bg-white text-slate-850 shadow-sm border border-slate-105' : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                      Abonos
+                    </button>
                   </div>
                 </div>
 
@@ -812,7 +852,8 @@ export default function NexusRPMDashboard() {
                           .filter(s => {
                             if (incomeFilter === 'all') return true;
                             if (incomeFilter === 'taller') return s.type === 'Servicio Taller';
-                            return s.type === 'Sala de Ventas';
+                            if (incomeFilter === 'pos') return s.type === 'Sala de Ventas';
+                            return s.type === 'Abono';
                           })
                           .sort((a, b) => b.fecha.localeCompare(a.fecha))
                           .map((s, idx) => (
@@ -821,7 +862,13 @@ export default function NexusRPMDashboard() {
                                 {new Date(s.fecha + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}
                               </td>
                               <td className="py-2.5 px-4">
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold ${s.type === 'Servicio Taller' ? 'bg-blue-50 text-blue-750 border border-blue-150' : 'bg-emerald-50 text-emerald-750 border border-emerald-150'}`}>
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold ${
+                                  s.type === 'Servicio Taller' 
+                                    ? 'bg-blue-50 text-blue-750 border border-blue-150' 
+                                    : s.type === 'Abono'
+                                      ? 'bg-amber-50 text-amber-750 border border-amber-150'
+                                      : 'bg-emerald-50 text-emerald-750 border border-emerald-150'
+                                }`}>
                                   {s.type}
                                 </span>
                               </td>

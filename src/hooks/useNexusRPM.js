@@ -78,7 +78,7 @@ export const useNexusRPM = () => {
           supabase
             .schema('garage')
             .from('garage_sala_ventas')
-            .select('total, sold_at, document_type')
+            .select('total, sold_at, document_type, notes')
             .eq('company_id', companyId)
         );
 
@@ -202,11 +202,13 @@ export const useNexusRPM = () => {
             if (sale.document_type === 'Factura') yearlyCashflow.ingresos.facturas[m] += val;
             else yearlyCashflow.ingresos.boletas[m] += val; // boletas o nulos
             
+            const isAbono = sale.notes && sale.notes.toLowerCase().includes('abono');
+            
             if (m === currentMonth) {
               salesTotal += val;
               currentMonthSales.push({
                 id: sale.id || `pos-${sale.sold_at}-${val}`,
-                type: 'Sala de Ventas',
+                type: isAbono ? 'Abono' : 'Sala de Ventas',
                 document_type: sale.document_type || 'Boleta',
                 total: val,
                 fecha: sale.sold_at.split('T')[0]
