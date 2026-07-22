@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle, Edit2, Save, X, FileText, Calendar, CreditCard, Briefcase, Repeat } from 'lucide-react';
+import { CheckCircle, Edit2, Save, X, FileText, Calendar, CreditCard, Briefcase, Repeat, Trash2, UserPlus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNexusContext } from '../../context/NexusContext';
 import jsPDF from 'jspdf';
@@ -24,7 +24,20 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
     tipo: 'Fijo'
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [generatingPdf, setGeneratingPdf] = useState(null);
+
+  // Estado para modal de nuevo colaborador
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newMechValues, setNewMechValues] = useState({
+    name: '',
+    cargo: '',
+    rut: '',
+    sueldo_base: 0,
+    tipo: 'Fijo',
+    porcentaje_comision_mo: 0,
+    porcentaje_comision_insumos: 0
+  });
 
   // Default data as fallback
   const defaultMechanics = [
@@ -32,6 +45,72 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
   ];
 
   const data = mechanics && mechanics.length > 0 ? mechanics : defaultMechanics;
+
+  const handleDeleteMechanic = async (mech) => {
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar a "${mech.name}" de la nómina de sueldos?`)) return;
+    setDeletingId(mech.id);
+    try {
+      const { error } = await supabase
+        .schema('garage')
+        .from('garage_mechanics')
+        .update({ is_active: false })
+        .eq('id', mech.id);
+
+      if (error) throw error;
+      if (onUpdate) onUpdate();
+      else window.location.reload();
+    } catch (err) {
+      console.error("Error al eliminar colaborador:", err);
+      alert("Error al eliminar colaborador: " + err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleAddMechanic = async (e) => {
+    e.preventDefault();
+    if (!newMechValues.name.trim()) {
+      alert("El nombre del colaborador es obligatorio.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .schema('garage')
+        .from('garage_mechanics')
+        .insert({
+          company_id: companyId,
+          name: newMechValues.name.trim(),
+          cargo: newMechValues.cargo.trim() || null,
+          rut: newMechValues.rut.trim() || null,
+          sueldo_base: Number(newMechValues.sueldo_base || 0),
+          tipo: newMechValues.tipo || 'Fijo',
+          porcentaje_comision_mo: Number(newMechValues.porcentaje_comision_mo || 0),
+          porcentaje_comision_insumos: Number(newMechValues.porcentaje_comision_insumos || 0),
+          is_active: true
+        });
+
+      if (error) throw error;
+
+      setShowAddModal(false);
+      setNewMechValues({
+        name: '',
+        cargo: '',
+        rut: '',
+        sueldo_base: 0,
+        tipo: 'Fijo',
+        porcentaje_comision_mo: 0,
+        porcentaje_comision_insumos: 0
+      });
+      if (onUpdate) onUpdate();
+      else window.location.reload();
+    } catch (err) {
+      console.error("Error al agregar colaborador:", err);
+      alert("Error al guardar colaborador: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleEditClick = (mech) => {
     setEditingId(mech.id);
@@ -327,7 +406,8 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
           categoria: 'Pago Sueldos',
           monto: Math.round(liquidoAPagar),
           fecha: new Date().toISOString().split('T')[0],
-          aplica_credito_iva: false
+          aplica_credito_iva: false,
+          descripcion: `Sueldo ${mech.name}${mech.cargo ? ` (${mech.cargo})` : ''}`
         });
 
       if (expenseError) {
@@ -349,390 +429,559 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-      {data.map((mech) => {
-        const isEditing = editingId === mech.id;
-        
-        const currentSueldo = isEditing ? Number(editValues.sueldo_base) : mech.sueldo_base;
-        const currentPorcMO = isEditing ? Number(editValues.porcentaje_comision_mo) : mech.porcentaje_comision_mo;
-        const currentPorcInsumos = isEditing ? Number(editValues.porcentaje_comision_insumos) : (mech.porcentaje_comision_insumos || 0);
-        const currentPrestamos = isEditing ? Number(editValues.prestamos) : (mech.prestamos || 0);
-        const currentDescuentos = isEditing ? Number(editValues.descuentos) : (mech.descuentos || 0);
-        const currentAsistencia = isEditing ? Number(editValues.asistencia) : (mech.asistencia || 0);
-        const currentVacaciones = isEditing ? Number(editValues.vacaciones_acumuladas) : (mech.vacaciones_acumuladas || 0);
-        const currentVacacionesTomadas = isEditing ? Number(editValues.vacaciones_tomadas) : (mech.vacaciones_tomadas || 0);
-        const currentFechaIngreso = isEditing ? editValues.fecha_ingreso : (mech.fecha_ingreso || '');
-        const currentRut = isEditing ? editValues.rut : (mech.rut || '');
-        const currentCargo = isEditing ? editValues.cargo : (mech.cargo || '');
-        const currentBonos = isEditing ? Number(editValues.bonos) : (mech.bonos || 0);
-        
-        const comisionMO = mech.mo_generada * (currentPorcMO / 100);
-        const comisionInsumos = (mech.insumos_generados || 0) * (currentPorcInsumos / 100);
-        
-        // Calcular descuentos legales
-        const afp = currentSueldo * 0.1145;
-        const fonasa = currentSueldo * 0.07;
-        const seguroCesantia = currentSueldo * 0.006;
-        const totalDescuentosLegales = afp + fonasa + seguroCesantia;
-        
-        const totalHaberes = currentSueldo + comisionMO + comisionInsumos + currentBonos;
-        const totalDescuentos = totalDescuentosLegales + currentPrestamos + currentDescuentos;
-        const total = totalHaberes - totalDescuentos;
-        const isApproved = mech.status === 'approved';
+    <div className="space-y-6">
+      {/* Barra superior con botón Agregar Colaborador */}
+      <div className="flex flex-wrap justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-200 gap-3">
+        <div>
+          <h3 className="font-extrabold text-slate-800 text-sm">Nómina de Colaboradores y Sueldos</h3>
+          <p className="text-[11px] text-slate-400 font-medium">Administra remuneraciones, comisiones y colaboradores activos.</p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5 active:scale-95"
+        >
+          <UserPlus size={15} />
+          Agregar Colaborador
+        </button>
+      </div>
 
-        const initials = mech.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {data.map((mech) => {
+          const isEditing = editingId === mech.id;
+          
+          const currentSueldo = isEditing ? Number(editValues.sueldo_base) : mech.sueldo_base;
+          const currentPorcMO = isEditing ? Number(editValues.porcentaje_comision_mo) : mech.porcentaje_comision_mo;
+          const currentPorcInsumos = isEditing ? Number(editValues.porcentaje_comision_insumos) : (mech.porcentaje_comision_insumos || 0);
+          const currentPrestamos = isEditing ? Number(editValues.prestamos) : (mech.prestamos || 0);
+          const currentDescuentos = isEditing ? Number(editValues.descuentos) : (mech.descuentos || 0);
+          const currentAsistencia = isEditing ? Number(editValues.asistencia) : (mech.asistencia || 0);
+          const currentVacaciones = isEditing ? Number(editValues.vacaciones_acumuladas) : (mech.vacaciones_acumuladas || 0);
+          const currentVacacionesTomadas = isEditing ? Number(editValues.vacaciones_tomadas) : (mech.vacaciones_tomadas || 0);
+          const currentFechaIngreso = isEditing ? editValues.fecha_ingreso : (mech.fecha_ingreso || '');
+          const currentRut = isEditing ? editValues.rut : (mech.rut || '');
+          const currentCargo = isEditing ? editValues.cargo : (mech.cargo || '');
+          const currentBonos = isEditing ? Number(editValues.bonos) : (mech.bonos || 0);
+          
+          const comisionMO = mech.mo_generada * (currentPorcMO / 100);
+          const comisionInsumos = (mech.insumos_generados || 0) * (currentPorcInsumos / 100);
+          
+          // Calcular descuentos legales
+          const afp = currentSueldo * 0.1145;
+          const fonasa = currentSueldo * 0.07;
+          const seguroCesantia = currentSueldo * 0.006;
+          const totalDescuentosLegales = afp + fonasa + seguroCesantia;
+          
+          const totalHaberes = currentSueldo + comisionMO + comisionInsumos + currentBonos;
+          const totalDescuentos = totalDescuentosLegales + currentPrestamos + currentDescuentos;
+          const total = totalHaberes - totalDescuentos;
+          const isApproved = mech.status === 'approved';
 
-        return (
-          <div key={mech.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col justify-between">
-            {/* Si está editando */}
-            {isEditing ? (
-              <div className="p-6 space-y-4 text-xs">
-                <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
-                    {initials}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-800 text-sm">{mech.name}</h3>
-                    <span className="text-[10px] text-slate-400">Editando Ficha de Colaborador</span>
-                  </div>
-                </div>
+          const initials = mech.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">RUT</label>
-                    <input 
-                      type="text" 
-                      placeholder="RUT"
-                      value={editValues.rut}
-                      onChange={(e) => setEditValues({...editValues, rut: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Cargo</label>
-                    <input 
-                      type="text" 
-                      placeholder="Cargo"
-                      value={editValues.cargo}
-                      onChange={(e) => setEditValues({...editValues, cargo: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Fecha Ingreso</label>
-                    <input 
-                      type="date" 
-                      value={editValues.fecha_ingreso}
-                      onChange={(e) => setEditValues({...editValues, fecha_ingreso: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Tipo de Remuneración</label>
-                    <div className="flex bg-slate-100 p-0.5 rounded-lg">
-                      <button
-                        type="button"
-                        onClick={() => setEditValues({...editValues, tipo: 'Fijo'})}
-                        className={`flex-1 py-1 text-[9px] font-bold rounded transition-all ${
-                          editValues.tipo === 'Fijo' 
-                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        Fija
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditValues({...editValues, tipo: 'Variable'})}
-                        className={`flex-1 py-1 text-[9px] font-bold rounded transition-all ${
-                          editValues.tipo === 'Variable' 
-                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
-                            : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        Variable
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Días Trabajados</label>
-                    <input 
-                      type="number" 
-                      value={editValues.asistencia}
-                      onChange={(e) => setEditValues({...editValues, asistencia: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Vac. Acumuladas</label>
-                    <input 
-                      type="number" 
-                      value={editValues.vacaciones_acumuladas}
-                      onChange={(e) => setEditValues({...editValues, vacaciones_acumuladas: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Vac. Tomadas</label>
-                    <input 
-                      type="number" 
-                      value={editValues.vacaciones_tomadas}
-                      onChange={(e) => setEditValues({...editValues, vacaciones_tomadas: e.target.value})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                    />
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 pt-3 space-y-3">
-                  <span className="text-[10px] font-bold text-slate-800 uppercase tracking-wide block">Parámetros de Liquidación</span>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Sueldo Base ($)</label>
-                      <input 
-                        type="number" 
-                        value={editValues.sueldo_base}
-                        onChange={(e) => setEditValues({...editValues, sueldo_base: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Bonos ($)</label>
-                      <input 
-                        type="number" 
-                        value={editValues.bonos}
-                        onChange={(e) => setEditValues({...editValues, bonos: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 block mb-1">% Comisión MO</label>
-                      <input 
-                        type="number" 
-                        value={editValues.porcentaje_comision_mo}
-                        onChange={(e) => setEditValues({...editValues, porcentaje_comision_mo: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 block mb-1">% Comisión Insumos</label>
-                      <input 
-                        type="number" 
-                        value={editValues.porcentaje_comision_insumos}
-                        onChange={(e) => setEditValues({...editValues, porcentaje_comision_insumos: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Préstamos ($)</label>
-                      <input 
-                        type="number" 
-                        value={editValues.prestamos}
-                        onChange={(e) => setEditValues({...editValues, prestamos: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Descuentos Varios ($)</label>
-                      <input 
-                        type="number" 
-                        value={editValues.descuentos}
-                        onChange={(e) => setEditValues({...editValues, descuentos: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-[11px] space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Total Haberes:</span>
-                    <span className="font-semibold text-slate-800">${Math.round(totalHaberes).toLocaleString('es-CL')}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Total Descuentos:</span>
-                    <span className="font-semibold text-rose-600">-${Math.round(totalDescuentos).toLocaleString('es-CL')}</span>
-                  </div>
-                  <div className="flex justify-between pt-1 border-t border-slate-200 font-bold">
-                    <span className="text-slate-700">Líquido Estimado:</span>
-                    <span className="text-emerald-600">${Math.round(total).toLocaleString('es-CL')}</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-1">
-                  <button 
-                    onClick={handleCancelEdit}
-                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2.5 rounded-xl font-semibold transition-colors flex items-center justify-center gap-1 text-[11px]"
-                  >
-                    <X size={14} /> Cancelar
-                  </button>
-                  <button 
-                    onClick={() => handleSave(mech.id)}
-                    disabled={isSaving}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold transition-all shadow-sm hover:shadow flex items-center justify-center gap-1 text-[11px] disabled:opacity-50"
-                  >
-                    <Save size={14} /> Guardar
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Vista de Ficha de Colaborador */
-              <>
-                <div className="p-6 space-y-4">
-                  {/* Cabecera de la Tarjeta */}
-                  <div className="flex items-start justify-between">
+          return (
+            <div key={mech.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden flex flex-col justify-between">
+              {/* Si está editando */}
+              {isEditing ? (
+                <div className="p-6 space-y-4 text-xs">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-extrabold text-base flex items-center justify-center shadow-sm">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
                         {initials}
                       </div>
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <h3 className="font-extrabold text-slate-800 text-sm leading-tight">{mech.name}</h3>
-                          <button onClick={() => handleEditClick(mech)} className="text-slate-400 hover:text-blue-600 p-0.5 transition-colors">
-                            <Edit2 size={13} />
-                          </button>
+                        <h3 className="font-bold text-slate-800 text-sm">{mech.name}</h3>
+                        <span className="text-[10px] text-slate-400">Editando Ficha de Colaborador</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleDeleteMechanic(mech)}
+                      disabled={deletingId === mech.id}
+                      className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
+                      title="Eliminar Colaborador de la nómina"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">RUT</label>
+                      <input 
+                        type="text" 
+                        placeholder="RUT"
+                        value={editValues.rut}
+                        onChange={(e) => setEditValues({...editValues, rut: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Cargo</label>
+                      <input 
+                        type="text" 
+                        placeholder="Cargo"
+                        value={editValues.cargo}
+                        onChange={(e) => setEditValues({...editValues, cargo: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Fecha Ingreso</label>
+                      <input 
+                        type="date" 
+                        value={editValues.fecha_ingreso}
+                        onChange={(e) => setEditValues({...editValues, fecha_ingreso: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Tipo de Remuneración</label>
+                      <div className="flex bg-slate-100 p-0.5 rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => setEditValues({...editValues, tipo: 'Fijo'})}
+                          className={`flex-1 py-1 text-[9px] font-bold rounded transition-all ${
+                            editValues.tipo === 'Fijo' 
+                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Fija
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditValues({...editValues, tipo: 'Variable'})}
+                          className={`flex-1 py-1 text-[9px] font-bold rounded transition-all ${
+                            editValues.tipo === 'Variable' 
+                              ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                              : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Variable
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Días Trabajados</label>
+                      <input 
+                        type="number" 
+                        value={editValues.asistencia}
+                        onChange={(e) => setEditValues({...editValues, asistencia: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Vac. Acumuladas</label>
+                      <input 
+                        type="number" 
+                        value={editValues.vacaciones_acumuladas}
+                        onChange={(e) => setEditValues({...editValues, vacaciones_acumuladas: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Vac. Tomadas</label>
+                      <input 
+                        type="number" 
+                        value={editValues.vacaciones_tomadas}
+                        onChange={(e) => setEditValues({...editValues, vacaciones_tomadas: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-3 space-y-3">
+                    <span className="text-[10px] font-bold text-slate-800 uppercase tracking-wide block">Parámetros de Liquidación</span>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 block mb-1">Sueldo Base ($)</label>
+                        <input 
+                          type="number" 
+                          value={editValues.sueldo_base}
+                          onChange={(e) => setEditValues({...editValues, sueldo_base: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 block mb-1">Bonos ($)</label>
+                        <input 
+                          type="number" 
+                          value={editValues.bonos}
+                          onChange={(e) => setEditValues({...editValues, bonos: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 block mb-1">% Comisión MO</label>
+                        <input 
+                          type="number" 
+                          value={editValues.porcentaje_comision_mo}
+                          onChange={(e) => setEditValues({...editValues, porcentaje_comision_mo: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 block mb-1">% Comisión Insumos</label>
+                        <input 
+                          type="number" 
+                          value={editValues.porcentaje_comision_insumos}
+                          onChange={(e) => setEditValues({...editValues, porcentaje_comision_insumos: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 block mb-1">Préstamos ($)</label>
+                        <input 
+                          type="number" 
+                          value={editValues.prestamos}
+                          onChange={(e) => setEditValues({...editValues, prestamos: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-400 block mb-1">Descuentos Varios ($)</label>
+                        <input 
+                          type="number" 
+                          value={editValues.descuentos}
+                          onChange={(e) => setEditValues({...editValues, descuentos: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-700 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-[11px] space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Total Haberes:</span>
+                      <span className="font-semibold text-slate-800">${Math.round(totalHaberes).toLocaleString('es-CL')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Total Descuentos:</span>
+                      <span className="font-semibold text-rose-600">-${Math.round(totalDescuentos).toLocaleString('es-CL')}</span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-slate-200 font-bold">
+                      <span className="text-slate-700">Líquido Estimado:</span>
+                      <span className="text-emerald-600">${Math.round(total).toLocaleString('es-CL')}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button 
+                      onClick={handleCancelEdit}
+                      className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2.5 rounded-xl font-semibold transition-colors flex items-center justify-center gap-1 text-[11px]"
+                    >
+                      <X size={14} /> Cancelar
+                    </button>
+                    <button 
+                      onClick={() => handleSave(mech.id)}
+                      disabled={isSaving}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold transition-all shadow-sm hover:shadow flex items-center justify-center gap-1 text-[11px] disabled:opacity-50"
+                    >
+                      <Save size={14} /> Guardar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Vista de Ficha de Colaborador */
+                <>
+                  <div className="p-6 space-y-4">
+                    {/* Cabecera de la Tarjeta */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-extrabold text-base flex items-center justify-center shadow-sm">
+                          {initials}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                          <p className="text-xs font-semibold text-blue-600">{currentCargo || 'Mecánico'}</p>
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 border leading-none ${
-                            (mech.tipo || 'Fijo') === 'Fijo'
-                              ? 'bg-blue-50 text-blue-600 border-blue-200'
-                              : 'bg-slate-50 text-slate-600 border-slate-200'
-                          }`}>
-                            {(mech.tipo || 'Fijo') === 'Fijo' ? (
-                              <>
-                                <Repeat size={8} /> Recurrente
-                              </>
-                            ) : (
-                              <>
-                                <Calendar size={8} /> Variable
-                              </>
-                            )}
-                          </span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="font-extrabold text-slate-800 text-sm leading-tight">{mech.name}</h3>
+                            <button onClick={() => handleEditClick(mech)} className="text-slate-400 hover:text-blue-600 p-0.5 transition-colors" title="Editar Ficha">
+                              <Edit2 size={13} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteMechanic(mech)} 
+                              disabled={deletingId === mech.id}
+                              className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors" 
+                              title="Eliminar Colaborador de la nómina"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                            <p className="text-xs font-semibold text-blue-600">{currentCargo || 'Mecánico'}</p>
+                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 border leading-none ${
+                              (mech.tipo || 'Fijo') === 'Fijo'
+                                ? 'bg-blue-50 text-blue-600 border-blue-200'
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}>
+                              {(mech.tipo || 'Fijo') === 'Fijo' ? (
+                                <>
+                                  <Repeat size={8} /> Recurrente
+                                </>
+                              ) : (
+                                <>
+                                  <Calendar size={8} /> Variable
+                                </>
+                              )}
+                            </span>
+                          </div>
                         </div>
                       </div>
+
+                      <div>
+                        {isApproved ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                            <CheckCircle size={12} /> Aprobado
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full flex items-center gap-1">
+                            Pendiente
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Informacion Ficha */}
+                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-150 text-[11px]">
+                      <div>
+                        <span className="text-slate-400 block font-bold uppercase text-[9px]">RUT</span>
+                        <span className="text-slate-700 font-bold truncate block">{currentRut || 'Sin RUT'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block font-bold uppercase text-[9px]">Días Trab.</span>
+                        <span className="text-slate-700 font-bold block">{currentAsistencia} días</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block font-bold uppercase text-[9px]">Vacaciones</span>
+                        <span className="text-slate-700 font-bold block">Acum: {currentVacaciones} | T: {currentVacacionesTomadas}</span>
+                      </div>
+                    </div>
+
+                    {/* Desglose Haberes / Descuentos */}
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      
+                      {/* HABERES */}
+                      <div className="space-y-2 border-r border-slate-100 pr-2">
+                        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">Haberes</span>
+                        <div className="space-y-1.5 text-[11px] text-slate-600">
+                          <div className="flex justify-between">
+                            <span>Sueldo Base:</span>
+                            <span className="font-semibold text-slate-700">${currentSueldo.toLocaleString('es-CL')}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Comisión MO:</span>
+                            <span className="font-semibold text-slate-700">${Math.round(comisionMO).toLocaleString('es-CL')}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Comisión Ins:</span>
+                            <span className="font-semibold text-slate-700">${Math.round(comisionInsumos).toLocaleString('es-CL')}</span>
+                          </div>
+                          {currentBonos > 0 && (
+                            <div className="flex justify-between">
+                              <span>Bonos:</span>
+                              <span className="font-semibold text-emerald-600">+${currentBonos.toLocaleString('es-CL')}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between pt-1.5 border-t border-slate-100 font-bold text-slate-800">
+                            <span>T. Haberes:</span>
+                            <span>${Math.round(totalHaberes).toLocaleString('es-CL')}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* DESCUENTOS */}
+                      <div className="space-y-2 pl-1">
+                        <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Descuentos</span>
+                        <div className="space-y-1.5 text-[11px] text-slate-600">
+                          <div className="flex justify-between text-[10px] text-slate-400">
+                            <span>Leyes AFP/Salud:</span>
+                            <span>${Math.round(totalDescuentosLegales).toLocaleString('es-CL')}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Préstamos:</span>
+                            <span className="font-semibold text-slate-700">${currentPrestamos.toLocaleString('es-CL')}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Varios:</span>
+                            <span className="font-semibold text-slate-700">${currentDescuentos.toLocaleString('es-CL')}</span>
+                          </div>
+                          <div className="flex justify-between pt-1.5 border-t border-slate-100 font-bold text-slate-800">
+                            <span>T. Dctos:</span>
+                            <span className="text-rose-600">-${Math.round(totalDescuentos).toLocaleString('es-CL')}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* Footer de la tarjeta con Liquido a Pagar y Botones */}
+                  <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col gap-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">Líquido a Pagar</span>
+                      <span className="text-lg font-extrabold text-emerald-600">${Math.round(total).toLocaleString('es-CL')}</span>
                     </div>
 
                     <div>
                       {isApproved ? (
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                          <CheckCircle size={12} /> Aprobado
-                        </span>
+                        <button 
+                          onClick={() => generatePDF(mech)}
+                          disabled={generatingPdf === mech.id}
+                          className="w-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-1.5"
+                        >
+                          <FileText size={14} className="text-blue-500" />
+                          {generatingPdf === mech.id ? 'Descargando...' : 'Descargar PDF'}
+                        </button>
                       ) : (
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full flex items-center gap-1">
-                          Pendiente
-                        </span>
+                        <button 
+                          onClick={() => generatePDF(mech)}
+                          disabled={generatingPdf === mech.id}
+                          className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5"
+                        >
+                          <CheckCircle size={14} className="text-emerald-400" />
+                          {generatingPdf === mech.id ? 'Generando...' : 'Aprobar Liquidación'}
+                        </button>
                       )}
                     </div>
                   </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-                  {/* Informacion Ficha */}
-                  <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-150 text-[11px]">
-                    <div>
-                      <span className="text-slate-400 block font-bold uppercase text-[9px]">RUT</span>
-                      <span className="text-slate-700 font-bold truncate block">{currentRut || 'Sin RUT'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-bold uppercase text-[9px]">Días Trab.</span>
-                      <span className="text-slate-700 font-bold block">{currentAsistencia} días</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-bold uppercase text-[9px]">Vacaciones</span>
-                      <span className="text-slate-700 font-bold block">Acum: {currentVacaciones} | T: {currentVacacionesTomadas}</span>
-                    </div>
-                  </div>
+      {/* Modal para Agregar Colaborador */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
+                <UserPlus size={18} className="text-blue-600" />
+                Agregar Nuevo Colaborador
+              </h3>
+              <button 
+                onClick={() => setShowAddModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
-                  {/* Desglose Haberes / Descuentos */}
-                  <div className="grid grid-cols-2 gap-4 pt-2">
-                    
-                    {/* HABERES */}
-                    <div className="space-y-2 border-r border-slate-100 pr-2">
-                      <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block">Haberes</span>
-                      <div className="space-y-1.5 text-[11px] text-slate-600">
-                        <div className="flex justify-between">
-                          <span>Sueldo Base:</span>
-                          <span className="font-semibold text-slate-700">${currentSueldo.toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Comisión MO:</span>
-                          <span className="font-semibold text-slate-700">${Math.round(comisionMO).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Comisión Ins:</span>
-                          <span className="font-semibold text-slate-700">${Math.round(comisionInsumos).toLocaleString('es-CL')}</span>
-                        </div>
-                        {currentBonos > 0 && (
-                          <div className="flex justify-between">
-                            <span>Bonos:</span>
-                            <span className="font-semibold text-emerald-600">+${currentBonos.toLocaleString('es-CL')}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between pt-1.5 border-t border-slate-100 font-bold text-slate-800">
-                          <span>T. Haberes:</span>
-                          <span>${Math.round(totalHaberes).toLocaleString('es-CL')}</span>
-                        </div>
-                      </div>
-                    </div>
+            <form onSubmit={handleAddMechanic} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Nombre Completo *</label>
+                <input 
+                  type="text"
+                  required
+                  placeholder="Ej: Juan Pérez"
+                  value={newMechValues.name}
+                  onChange={(e) => setNewMechValues({ ...newMechValues, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-                    {/* DESCUENTOS */}
-                    <div className="space-y-2 pl-1">
-                      <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">Descuentos</span>
-                      <div className="space-y-1.5 text-[11px] text-slate-600">
-                        <div className="flex justify-between text-[10px] text-slate-400">
-                          <span>Leyes AFP/Salud:</span>
-                          <span>${Math.round(totalDescuentosLegales).toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Préstamos:</span>
-                          <span className="font-semibold text-slate-700">${currentPrestamos.toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Varios:</span>
-                          <span className="font-semibold text-slate-700">${currentDescuentos.toLocaleString('es-CL')}</span>
-                        </div>
-                        <div className="flex justify-between pt-1.5 border-t border-slate-100 font-bold text-slate-800">
-                          <span>T. Dctos:</span>
-                          <span className="text-rose-600">-${Math.round(totalDescuentos).toLocaleString('es-CL')}</span>
-                        </div>
-                      </div>
-                    </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Cargo</label>
+                  <input 
+                    type="text"
+                    placeholder="Ej: Mecánico General"
+                    value={newMechValues.cargo}
+                    onChange={(e) => setNewMechValues({ ...newMechValues, cargo: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">RUT</label>
+                  <input 
+                    type="text"
+                    placeholder="12.345.678-9"
+                    value={newMechValues.rut}
+                    onChange={(e) => setNewMechValues({ ...newMechValues, rut: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Sueldo Base ($)</label>
+                  <input 
+                    type="number"
+                    placeholder="0"
+                    value={newMechValues.sueldo_base}
+                    onChange={(e) => setNewMechValues({ ...newMechValues, sueldo_base: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Tipo de Remuneración</label>
+                  <div className="flex bg-slate-100 p-0.5 rounded-lg mt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setNewMechValues({ ...newMechValues, tipo: 'Fijo' })}
+                      className={`flex-1 py-1.5 text-[9px] font-bold rounded transition-all ${
+                        newMechValues.tipo === 'Fijo' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
+                      }`}
+                    >
+                      Fijo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewMechValues({ ...newMechValues, tipo: 'Variable' })}
+                      className={`flex-1 py-1.5 text-[9px] font-bold rounded transition-all ${
+                        newMechValues.tipo === 'Variable' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
+                      }`}
+                    >
+                      Variable
+                    </button>
                   </div>
                 </div>
+              </div>
 
-                {/* Footer de la tarjeta con Liquido a Pagar y Botones */}
-                <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col gap-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Líquido a Pagar</span>
-                    <span className="text-lg font-extrabold text-emerald-600">${Math.round(total).toLocaleString('es-CL')}</span>
-                  </div>
-
-                  <div>
-                    {isApproved ? (
-                      <button 
-                        onClick={() => generatePDF(mech)}
-                        disabled={generatingPdf === mech.id}
-                        className="w-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-1.5"
-                      >
-                        <FileText size={14} className="text-blue-500" />
-                        {generatingPdf === mech.id ? 'Descargando...' : 'Descargar PDF'}
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={() => generatePDF(mech)}
-                        disabled={generatingPdf === mech.id}
-                        className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5"
-                      >
-                        <CheckCircle size={14} className="text-emerald-400" />
-                        {generatingPdf === mech.id ? 'Generando...' : 'Aprobar Liquidación'}
-                      </button>
-                    )}
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">% Comisión MO</label>
+                  <input 
+                    type="number"
+                    placeholder="0"
+                    value={newMechValues.porcentaje_comision_mo}
+                    onChange={(e) => setNewMechValues({ ...newMechValues, porcentaje_comision_mo: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 font-semibold text-center outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
-              </>
-            )}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">% Comisión Insumos</label>
+                  <input 
+                    type="number"
+                    placeholder="0"
+                    value={newMechValues.porcentaje_comision_insumos}
+                    onChange={(e) => setNewMechValues({ ...newMechValues, porcentaje_comision_insumos: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-slate-800 font-semibold text-center outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl text-xs transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-sm disabled:opacity-50"
+                >
+                  {isSaving ? 'Guardando...' : 'Guardar Colaborador'}
+                </button>
+              </div>
+            </form>
           </div>
-        );
-      })}
+        </div>
+      )}
     </div>
   );
 }

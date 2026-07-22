@@ -57,7 +57,8 @@ export default function ExpensesReport({
   capexCategories = [],
   allAvailableCategories = [],
   onMergeCategory = null,
-  isUpdating = false
+  isUpdating = false,
+  onOpenSueldosModal = null
 }) {
   const [filterClasif, setFilterClasif]     = useState('Todos');  // 'OPEX' | 'CAPEX' | 'Todos'
   const [filterCategoria, setFilterCategoria] = useState('Todas');
@@ -424,6 +425,16 @@ export default function ExpensesReport({
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        {item.name === 'Pago Sueldos' && onOpenSueldosModal && (
+                          <button
+                            type="button"
+                            onClick={onOpenSueldosModal}
+                            className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors"
+                            title="Ver a quién pertenece cada sueldo y la cantidad bruta"
+                          >
+                            Ver Detalle
+                          </button>
+                        )}
                         <span className="font-black text-slate-800">${fmtM(item.value)}</span>
                         <span className="text-slate-400 w-10 text-right">{pct.toFixed(1)}%</span>
                       </div>

@@ -19,6 +19,7 @@ import {
   Clock,
   UserPlus,
   X,
+  Users,
   Search,
   Mail,
   Phone,
@@ -28,6 +29,7 @@ import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
 import ConfirmModal from './ConfirmModal';
 import ExpensesReport from './ExpensesReport';
+import SueldosDetailModal from './SueldosDetailModal';
 
 const DEFAULT_OPEX_CATEGORIES = [
   'Insumo de aseo',
@@ -53,9 +55,10 @@ const DEFAULT_CAPEX_CATEGORIES = [
 ];
 
 export default function ExpensesModule() {
-  const { data: { expenses, allExpenses }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
+  const { data: { expenses, allExpenses, mechanics }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
   const { companyId, selectedMonth, selectedYear } = useNexusContext();
   
+  const [showSueldosModal, setShowSueldosModal] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [clasificacion, setClasificacion] = useState('OPEX'); // 'OPEX' o 'CAPEX'
   const [recurrencia, setRecurrencia] = useState('Variable'); // 'Variable' o 'Fijo'
@@ -557,10 +560,44 @@ export default function ExpensesModule() {
   const capex = expenses.filter(e => capexCategories.includes(e.categoria));
   const opex = expenses.filter(e => !capexCategories.includes(e.categoria));
 
-  // Totales de OPEX
-  const totalOpex = opex.reduce((sum, e) => sum + Number(e.monto), 0);
-  const opexFijos = opex.filter(e => e.tipo === 'Fijo').reduce((sum, e) => sum + Number(e.monto), 0);
-  const opexVariables = opex.filter(e => e.tipo === 'Variable').reduce((sum, e) => sum + Number(e.monto), 0);
+  // Distinción y cálculo de Sueldos
+  const sueldosExpenses = opex.filter(e => e.categoria === 'Pago Sueldos' || (e.categoria && e.categoria.toLowerCase().includes('sueldo')));
+  const totalSueldosRegistrados = sueldosExpenses.reduce((sum, e) => sum + Number(e.monto || 0), 0);
+
+  const totalSueldosBrutosMechs = (mechanics || []).reduce((sum, m) => {
+    const sb = Number(m.sueldo_base || 0);
+    const cmo = Number(m.mo_generada || 0) * (Number(m.porcentaje_comision_mo || 0) / 100);
+    const cins = Number(m.insumos_generados || 0) * (Number(m.porcentaje_comision_insumos || 0) / 100);
+    const bonos = Number(m.bonos || 0);
+    return sum + sb + cmo + cins + bonos;
+  }, 0);
+
+  const totalSueldos = totalSueldosBrutosMechs > 0 ? totalSueldosBrutosMechs : totalSueldosRegistrados;
+
+  // Gastos operacionales excluyendo filas de sueldo para no duplicar
+  const opexSinSueldos = opex
+    .filter(e => e.categoria !== 'Pago Sueldos' && !(e.categoria && e.categoria.toLowerCase().includes('sueldo')))
+    .reduce((sum, e) => sum + Number(e.monto || 0), 0);
+
+  const opexFijosSinSueldos = opex
+    .filter(e => e.tipo === 'Fijo' && e.categoria !== 'Pago Sueldos' && !(e.categoria && e.categoria.toLowerCase().includes('sueldo')))
+    .reduce((sum, e) => sum + Number(e.monto || 0), 0);
+
+  const opexVariablesSinSueldos = opex
+    .filter(e => e.tipo === 'Variable' && e.categoria !== 'Pago Sueldos' && !(e.categoria && e.categoria.toLowerCase().includes('sueldo')))
+    .reduce((sum, e) => sum + Number(e.monto || 0), 0);
+
+  // Totales Integrados de OPEX (Estructura Operativa + Nómina Bruta del Mes)
+  const totalOpex = opexSinSueldos + totalSueldos;
+  const opexFijos = opexFijosSinSueldos + totalSueldos;
+  const opexVariables = opexVariablesSinSueldos;
+
+  // Repuestos excluidos del Punto de Equilibrio (Regla de negocio)
+  const repuestosExpenses = opex
+    .filter(e => e.categoria && (e.categoria.toLowerCase().includes('repuesto') || e.categoria.toLowerCase().includes('respuesto')))
+    .reduce((sum, e) => sum + Number(e.monto || 0), 0);
+
+  const opexNetoPuntoEquilibrio = Math.max(0, totalOpex - repuestosExpenses);
 
   // Totales de CAPEX
   const totalCapex = capex.reduce((sum, e) => sum + Number(e.monto), 0);
@@ -1981,28 +2018,72 @@ export default function ExpensesModule() {
       {/* CONTENIDO DE PESTAÑA: GASTOS DEL PERIODO */}
       {activeTab === 'gastos' && (
         <div className="space-y-6 animate-fade-in">
-          {/* Resumen Cards (OPEX, IVA, CAPEX) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Resumen Cards (OPEX, SUELDOS, IVA, CAPEX) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
             
-            {/* OPEX Summary Card (Destacado - 2 Columnas) */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between lg:col-span-2">
+            {/* OPEX Summary Card */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
               <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-3xl"></div>
               <div>
                 <div className="flex justify-between items-center mb-3">
-                  <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Gastos Operativos (OPEX)</span>
+                  <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Gastos Operativos (OPEX Bruto)</span>
                   <TrendingUp className="text-rose-500" size={20} />
                 </div>
                 <div className="text-3xl font-black text-slate-800">${fmt(totalOpex)}</div>
               </div>
-              <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-slate-100 text-xs font-bold text-slate-500">
-                <div>
-                  <span className="block text-[10px] text-slate-400 uppercase">Gastos Fijos</span>
-                  <span className="text-slate-700 text-sm font-extrabold">${fmt(opexFijos)}</span>
+              <div className="space-y-2 mt-4 pt-3 border-t border-slate-100 text-xs font-bold text-slate-500">
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-slate-400 uppercase">Fijos: <span className="text-slate-700 font-extrabold">${fmt(opexFijos)}</span></span>
+                  <span className="text-slate-400 uppercase">Variables: <span className="text-slate-700 font-extrabold">${fmt(opexVariables)}</span></span>
                 </div>
-                <div>
-                  <span className="block text-[10px] text-slate-400 uppercase">Gastos Variables</span>
-                  <span className="text-slate-700 text-sm font-extrabold">${fmt(opexVariables)}</span>
+                {repuestosExpenses > 0 ? (
+                  <div className="bg-blue-50/80 p-2 rounded-xl border border-blue-100 text-[10px] space-y-0.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-blue-700 font-extrabold">Meta Netos (P. Equilibrio):</span>
+                      <span className="text-blue-950 font-black">${fmt(opexNetoPuntoEquilibrio)}</span>
+                    </div>
+                    <div className="text-[9px] text-blue-600/80 font-semibold">
+                      Excluye repuestos: -${fmt(repuestosExpenses)}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-150 text-[10px]">
+                    <span className="text-slate-400 font-bold uppercase">Op. sin Sueldos</span>
+                    <span className="text-slate-800 font-extrabold">${fmt(opexSinSueldos)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Sueldos Summary Card (Destacado Azul) */}
+            <div className="bg-gradient-to-br from-blue-50/70 via-indigo-50/30 to-white p-6 rounded-2xl border border-blue-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/10 rounded-full blur-2xl"></div>
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-blue-700 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                    <Users size={16} className="text-blue-600" />
+                    Total Sueldos (Bruto)
+                  </span>
+                  <span className="text-[9px] font-extrabold bg-blue-100/90 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
+                    Nómina Equipo
+                  </span>
                 </div>
+                <div className="text-3xl font-black text-blue-950">${fmt(totalSueldos)}</div>
+              </div>
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-blue-100/80">
+                <div className="text-[10px] text-slate-500 font-semibold">
+                  <span>{totalOpex > 0 ? `${((totalSueldos / totalOpex) * 100).toFixed(1)}% del OPEX` : 'Remuneraciones'}</span>
+                  {totalSueldosRegistrados > 0 && (
+                    <span className="block text-[9px] text-slate-400">Comprobantes: ${fmt(totalSueldosRegistrados)}</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowSueldosModal(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-extrabold px-3 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1 active:scale-95 cursor-pointer"
+                >
+                  <Users size={11} />
+                  Ver Detalle
+                </button>
               </div>
             </div>
 
@@ -2489,6 +2570,7 @@ export default function ExpensesModule() {
           allAvailableCategories={allAvailableCategories}
           onMergeCategory={handleMergeCategory}
           isUpdating={updatingCategoryId === 'merge-all'}
+          onOpenSueldosModal={() => setShowSueldosModal(true)}
         />
       )}
 
@@ -2599,6 +2681,16 @@ export default function ExpensesModule() {
         </div>
       )}
 
+      {/* Modal de Detalle de Sueldos */}
+      <SueldosDetailModal
+        isOpen={showSueldosModal}
+        onClose={() => setShowSueldosModal(false)}
+        mechanics={mechanics || []}
+        expenses={allExpenses || []}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+      />
+
     </div>
   );
 
@@ -2638,6 +2730,19 @@ export default function ExpensesModule() {
               ))}
             </select>
             
+            {/* Botón Ver Detalle de Sueldos */}
+            {exp.categoria === 'Pago Sueldos' && (
+              <button
+                type="button"
+                onClick={() => setShowSueldosModal(true)}
+                className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 transition-all cursor-pointer hover:shadow-xs active:scale-95"
+                title="Ver a quién pertenece cada sueldo y la cantidad bruta de egreso"
+              >
+                <Users size={11} />
+                Ver Detalle de Sueldos
+              </button>
+            )}
+
             {/* Badges de Recurrencia */}
             {isFixed ? (
               <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
