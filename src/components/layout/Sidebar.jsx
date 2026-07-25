@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, LogOut, Settings, BarChart3, DollarSign, FileText, Gauge, Calculator, X, Percent, Truck, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, Users, LogOut, Settings, BarChart3, DollarSign, FileText, Gauge, Calculator, X, Percent, Truck, HelpCircle, CreditCard } from 'lucide-react';
 import { useNexusContext } from '../../context/NexusContext';
 
 export default function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen }) {
@@ -10,6 +10,7 @@ export default function Sidebar({ currentView, setCurrentView, isOpen, setIsOpen
   const navItems = [
     { id: 'dashboard', label: 'Resumen General', icon: LayoutDashboard },
     { id: 'expenses', label: 'Egresos y Facturas', icon: FileText },
+    { id: 'accounts', label: 'Cuentas', icon: CreditCard },
     { id: 'cashflow', label: 'Flujo de Caja Anual', icon: DollarSign },
     { id: 'payroll', label: 'Liquidaciones & Personal', icon: Users },
     { id: 'pricing', label: 'Precios y Rentabilidad', icon: Calculator },

@@ -7,6 +7,7 @@ import { useNexusContext } from '../../context/NexusContext';
 const VIEW_TITLES = {
   dashboard: 'Resumen General',
   expenses: 'Gestión de Egresos y Facturas',
+  accounts: 'Cuentas',
   cashflow: 'Flujo de Caja Anual',
   payroll: 'Liquidaciones & Personal',
   pricing: 'Precios y Rentabilidad',

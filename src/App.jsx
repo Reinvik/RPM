@@ -5,6 +5,7 @@ import SuperAdminDashboard from './components/admin/SuperAdminDashboard';
 import Login from './components/Login';
 import Layout from './components/layout/Layout';
 import ExpensesModule from './components/rpm/ExpensesModule';
+import BankAccountsModule from './components/rpm/BankAccountsModule';
 import CashFlowModule from './components/rpm/CashFlowModule';
 import PayrollModule from './components/rpm/PayrollModule';
 import PricingModule from './components/rpm/PricingModule';
@@ -26,6 +27,7 @@ const AppContent = () => {
     <Layout currentView={currentView} setCurrentView={setCurrentView}>
       {currentView === 'dashboard' && <NexusRPMDashboard />}
       {currentView === 'expenses' && <ExpensesModule />}
+      {currentView === 'accounts' && <BankAccountsModule />}
       {currentView === 'cashflow' && <CashFlowModule />}
       {currentView === 'payroll' && <PayrollModule />}
       {currentView === 'pricing' && <PricingModule />}

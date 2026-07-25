@@ -39,12 +39,7 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
     porcentaje_comision_insumos: 0
   });
 
-  // Default data as fallback
-  const defaultMechanics = [
-    { id: 1, name: 'Carlos Mendoza', sueldo_base: 500000, porcentaje_comision_mo: 30, mo_generada: 1200000, status: 'pending' }
-  ];
-
-  const data = mechanics && mechanics.length > 0 ? mechanics : defaultMechanics;
+  const data = mechanics || [];
 
   const handleDeleteMechanic = async (mech) => {
     if (!window.confirm(`¿Estás seguro de que deseas eliminar a "${mech.name}" de la nómina de sueldos?`)) return;
@@ -446,7 +441,25 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {data.map((mech) => {
+        {data.length === 0 ? (
+          <div className="col-span-full bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+              <UserPlus size={24} />
+            </div>
+            <h4 className="font-bold text-slate-800 text-sm">No hay colaboradores en la nómina</h4>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              No tienes colaboradores o mecánicos activos registrados. Registra tu personal para gestionar su sueldo base y comisiones.
+            </p>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm active:scale-95"
+            >
+              <UserPlus size={15} />
+              Agregar Colaborador
+            </button>
+          </div>
+        ) : (
+          data.map((mech) => {
           const isEditing = editingId === mech.id;
           
           const currentSueldo = isEditing ? Number(editValues.sueldo_base) : mech.sueldo_base;
@@ -847,7 +860,7 @@ export default function MechanicSettlement({ mechanics, onUpdate }) {
               )}
             </div>
           );
-        })}
+        }))}
       </div>
 
       {/* Modal para Agregar Colaborador */}
