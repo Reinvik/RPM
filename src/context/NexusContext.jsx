@@ -177,25 +177,30 @@ export const NexusProvider = ({ children }) => {
   }, []);
 
   const fetchCompanyDetails = async (cId) => {
-    // Buscar config de garage
-    const { data: settings } = await supabase
-      .schema('garage')
-      .from('garage_settings')
-      .select('*')
-      .eq('company_id', cId)
-      .single();
-      
-    setCompanySettings(settings || null);
+    if (!cId) return;
+    try {
+      // Buscar config de garage
+      const { data: settings } = await supabase
+        .schema('garage')
+        .from('garage_settings')
+        .select('*')
+        .eq('company_id', cId)
+        .maybeSingle();
+        
+      setCompanySettings(settings || null);
 
-    // Buscar nombre base
-    const { data: company } = await supabase
-      .from('companies')
-      .select('name')
-      .eq('id', cId)
-      .single();
-      
-    if (company) {
-      setCompanyName(settings?.business_name || company.name);
+      // Buscar nombre base
+      const { data: company } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', cId)
+        .maybeSingle();
+        
+      if (company) {
+        setCompanyName(settings?.business_name || company.name);
+      }
+    } catch (e) {
+      console.warn("Aviso al obtener detalles de la empresa/sucursal:", e);
     }
   };
 
