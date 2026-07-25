@@ -31,57 +31,95 @@ export const NexusProvider = ({ children }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Cargar sucursales / empresas asociadas a la cuenta
+  // Cargar sucursales / empresas asociadas a la cuenta (Base de Datos + Ecosistema Local)
   const fetchAvailableCompanies = async (profile) => {
-    if (!profile) return [];
+    let dbCompanies = [];
     
-    if (profile.role === 'superadmin' || profile.role === 'NexusOwner') {
+    if (profile && (profile.role === 'superadmin' || profile.role === 'NexusOwner')) {
       const { data, error } = await supabase
         .from('companies')
         .select('*')
         .order('name');
       if (!error && data) {
-        setAvailableCompanies(data);
-        return data;
+        dbCompanies = data;
       }
-      return [];
-    }
+    } else if (profile?.company_id) {
+      try {
+        const { data: userComp } = await supabase
+          .from('companies')
+          .select('*')
+          .eq('id', profile.company_id)
+          .maybeSingle();
 
-    if (!profile.company_id) {
-      setAvailableCompanies([]);
-      return [];
-    }
+        if (userComp) {
+          const rootCompanyId = userComp.parent_company_id || userComp.id;
+          const { data: branches } = await supabase
+            .from('companies')
+            .select('*')
+            .or(`id.eq.${rootCompanyId},parent_company_id.eq.${rootCompanyId}`)
+            .order('name');
 
-    try {
-      // 1. Obtener la compañía asignada en el perfil
-      const { data: userComp, error: compErr } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('id', profile.company_id)
-        .single();
-
-      if (compErr || !userComp) {
-        setAvailableCompanies([]);
-        return [];
+          dbCompanies = (branches && branches.length > 0) ? branches : [userComp];
+        }
+      } catch (e) {
+        console.error('Error fetching companies from DB:', e);
       }
-
-      const rootCompanyId = userComp.parent_company_id || userComp.id;
-
-      // 2. Buscar matriz y todas las sucursales asociadas
-      const { data: branches, error: branchesErr } = await supabase
-        .from('companies')
-        .select('*')
-        .or(`id.eq.${rootCompanyId},parent_company_id.eq.${rootCompanyId}`)
-        .order('name');
-
-      const result = (!branchesErr && branches && branches.length > 0) ? branches : [userComp];
-      setAvailableCompanies(result);
-      return result;
-    } catch (e) {
-      console.error('Error fetching available companies/branches:', e);
-      setAvailableCompanies([]);
-      return [];
     }
+
+    // ── LEER SUCURSALES DEL LOCALSTORAGE (ECOSISTEMA NEXUS) ──
+    const targetCompId = profile?.company_id || 'company-123';
+    const keysToTry = [
+      `punto_nexus_branches_${targetCompId}`,
+      `nexusRpm_branches_${targetCompId}`,
+      `nexus_branches_${targetCompId}`,
+      `nexusgarage_branches_${targetCompId}`,
+      `punto_nexus_branches_company-123`,
+      `nexus_branches`
+    ];
+
+    let localBranches = [];
+    for (const key of keysToTry) {
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            localBranches = parsed;
+            break;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Convertir ramas locales al formato de empresas
+    const formattedLocal = localBranches.map(b => ({
+      id: b.id,
+      name: b.name,
+      code: b.code || '',
+      business_type: b.business_type || 'alimentos',
+      parent_company_id: b.is_main ? null : (b.company_id || targetCompId)
+    }));
+
+    // Si no hay empresas registradas aún, proporcionar la Matriz y Minimarket por defecto
+    if (dbCompanies.length === 0 && formattedLocal.length === 0) {
+      formattedLocal.push(
+        { id: 'branch-matriz', name: 'Matriz Principal', parent_company_id: null, business_type: 'gastronomia' },
+        { id: 'branch-minimarket', name: 'Nexus Minimarket', parent_company_id: 'company-123', business_type: 'alimentos' }
+      );
+    }
+
+    // Fusionar sin duplicados
+    const combinedMap = new Map();
+    dbCompanies.forEach(c => combinedMap.set(c.id, c));
+    formattedLocal.forEach(b => {
+      if (!combinedMap.has(b.id)) {
+        combinedMap.set(b.id, b);
+      }
+    });
+
+    const finalResult = Array.from(combinedMap.values());
+    setAvailableCompanies(finalResult);
+    return finalResult;
   };
 
   // Prevenir que el refresh de token reinicie la empresa seleccionada
@@ -91,18 +129,18 @@ export const NexusProvider = ({ children }) => {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       
       setUserProfile(profile);
-      setUserRole(profile.role);
+      setUserRole(profile?.role || 'admin');
 
       const branches = await fetchAvailableCompanies(profile);
 
-      let targetCompanyId = profile.company_id;
+      let targetCompanyId = profile?.company_id || 'company-123';
       
-      if (profile.role === 'superadmin' || profile.role === 'NexusOwner') {
+      if (profile?.role === 'superadmin' || profile?.role === 'NexusOwner') {
         const persistedCompanyId = localStorage.getItem('nexusRpm_impersonatedCompany');
         if (persistedCompanyId) {
           targetCompanyId = persistedCompanyId;
@@ -110,7 +148,6 @@ export const NexusProvider = ({ children }) => {
           targetCompanyId = currentCompId;
         }
       } else {
-        // Para usuario normal, verificar si hay sucursal seleccionada guardada en localStorage
         const persistedBranch = localStorage.getItem(`nexusRpm_selectedBranch_${userId}`);
         if (persistedBranch && branches.some(b => b.id === persistedBranch)) {
           targetCompanyId = persistedBranch;
@@ -126,7 +163,9 @@ export const NexusProvider = ({ children }) => {
         fetchCompanyDetails(targetCompanyId);
       }
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      console.error('Error fetching profile, usando modo resiliente local:', error);
+      await fetchAvailableCompanies(null);
+      if (!companyId) setCompanyId('company-123');
     } finally {
       setLoading(false);
     }
@@ -136,14 +175,17 @@ export const NexusProvider = ({ children }) => {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
         console.error("Session error:", error);
+        fetchAvailableCompanies(null);
+        if (!companyId) setCompanyId('company-123');
         setLoading(false);
         return;
       }
       setSession(session);
       if (session) {
-        // En la carga inicial pasamos null para que tome el del perfil
         fetchUserProfile(session.user.id, null);
       } else {
+        fetchAvailableCompanies(null);
+        if (!companyId) setCompanyId('company-123');
         setLoading(false);
       }
     });
