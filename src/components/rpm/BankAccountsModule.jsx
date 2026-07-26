@@ -4,6 +4,7 @@ import {
   CreditCard, 
   PlusCircle, 
   MinusCircle, 
+  ArrowRightLeft,
   History, 
   Edit3, 
   Trash2, 
@@ -75,7 +76,8 @@ export default function BankAccountsModule() {
   const [movementType, setMovementType] = useState('deposito'); // 'deposito' | 'retiro'
   const [movementFormData, setMovementFormData] = useState({
     amount: '',
-    description: ''
+    description: '',
+    targetAccountId: ''
   });
 
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -221,12 +223,99 @@ export default function BankAccountsModule() {
     }
   };
 
-  // Depositar / Retirar dinero de una cuenta
+  // Depositar / Retirar / Transferir dinero de una cuenta
   const handleSaveMovement = async (e) => {
     e.preventDefault();
     const amt = Number(movementFormData.amount || 0);
     if (!movementAccount || amt <= 0) return;
 
+    // Caso 1: Transferencia entre Cuentas
+    if (movementType === 'transferencia') {
+      const targetAcc = accounts.find(a => a.id === movementFormData.targetAccountId);
+      if (!targetAcc) {
+        alert('Por favor selecciona una cuenta de destino válida.');
+        return;
+      }
+      if (targetAcc.id === movementAccount.id) {
+        alert('La cuenta de destino debe ser diferente a la cuenta de origen.');
+        return;
+      }
+
+      setSubmitting(true);
+      try {
+        const sourceBal = Number(movementAccount.balance || 0);
+        const targetBal = Number(targetAcc.balance || 0);
+
+        const newSourceBal = sourceBal - amt;
+        const newTargetBal = targetBal + amt;
+
+        // 1. Actualizar saldo en cuenta origen
+        const { error: sourceErr } = await supabase
+          .schema('garage')
+          .from('bank_accounts')
+          .update({
+            balance: newSourceBal,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', movementAccount.id);
+
+        if (sourceErr) throw sourceErr;
+
+        // 2. Actualizar saldo en cuenta destino
+        const { error: targetErr } = await supabase
+          .schema('garage')
+          .from('bank_accounts')
+          .update({
+            balance: newTargetBal,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', targetAcc.id);
+
+        if (targetErr) throw targetErr;
+
+        // 3. Registrar transacciones de salida e ingreso
+        const desc = movementFormData.description.trim();
+        const outgoingDesc = `Transferencia a ${targetAcc.name}${desc ? ' - ' + desc : ''}`;
+        const incomingDesc = `Transferencia desde ${movementAccount.name}${desc ? ' - ' + desc : ''}`;
+
+        const { error: txErr } = await supabase
+          .schema('garage')
+          .from('bank_transactions')
+          .insert([
+            {
+              company_id: companyId,
+              account_id: movementAccount.id,
+              type: 'retiro',
+              amount: amt,
+              balance_after: newSourceBal,
+              description: outgoingDesc
+            },
+            {
+              company_id: companyId,
+              account_id: targetAcc.id,
+              type: 'deposito',
+              amount: amt,
+              balance_after: newTargetBal,
+              description: incomingDesc
+            }
+          ]);
+
+        if (txErr) throw txErr;
+
+        setShowMovementModal(false);
+        setMovementAccount(null);
+        setMovementFormData({ amount: '', description: '', targetAccountId: '' });
+        fetchData();
+      } catch (err) {
+        console.error('Error saving transfer:', err);
+        alert('Error al procesar la transferencia: ' + err.message);
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    // Caso 2: Abono o Retiro individual
     setSubmitting(true);
     try {
       const isDeposit = movementType === 'deposito';
@@ -262,7 +351,7 @@ export default function BankAccountsModule() {
 
       setShowMovementModal(false);
       setMovementAccount(null);
-      setMovementFormData({ amount: '', description: '' });
+      setMovementFormData({ amount: '', description: '', targetAccountId: '' });
       fetchData();
     } catch (err) {
       console.error('Error saving movement:', err);
@@ -636,12 +725,12 @@ export default function BankAccountsModule() {
                       Conciliar / Cuadrar Cuenta
                     </button>
 
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-1.5">
                       <button
                         onClick={() => {
                           setMovementAccount(acc);
                           setMovementType('deposito');
-                          setMovementFormData({ amount: '', description: '' });
+                          setMovementFormData({ amount: '', description: '', targetAccountId: '' });
                           setShowMovementModal(true);
                         }}
                         className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] font-bold py-2 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
@@ -654,13 +743,28 @@ export default function BankAccountsModule() {
                         onClick={() => {
                           setMovementAccount(acc);
                           setMovementType('retiro');
-                          setMovementFormData({ amount: '', description: '' });
+                          setMovementFormData({ amount: '', description: '', targetAccountId: '' });
                           setShowMovementModal(true);
                         }}
                         className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold py-2 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
                       >
                         <MinusCircle size={13} />
                         Retirar
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setMovementAccount(acc);
+                          setMovementType('transferencia');
+                          const otherAcc = accounts.find(a => a.id !== acc.id);
+                          setMovementFormData({ amount: '', description: '', targetAccountId: otherAcc ? otherAcc.id : '' });
+                          setShowMovementModal(true);
+                        }}
+                        className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold py-2 px-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                        title="Transferir a otra cuenta"
+                      >
+                        <ArrowRightLeft size={13} />
+                        Transferir
                       </button>
 
                       <button
@@ -928,15 +1032,58 @@ export default function BankAccountsModule() {
         </div>
       )}
 
-      {/* ── MODAL: Abono / Retiro Manual ── */}
+      {/* ── MODAL: Abono / Retiro / Transferencia Manual ── */}
       {showMovementModal && movementAccount && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden relative">
-            <div className={`p-5 border-b border-slate-100 flex justify-between items-center ${
-              movementType === 'deposito' ? 'bg-emerald-50' : 'bg-rose-50'
+            
+            {/* Pestañas del Tipo de Movimiento */}
+            <div className="flex border-b border-slate-200 bg-slate-100 p-1.5 gap-1">
+              <button
+                type="button"
+                onClick={() => setMovementType('deposito')}
+                className={`flex-1 py-2 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  movementType === 'deposito' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <PlusCircle size={14} />
+                Abonar
+              </button>
+              <button
+                type="button"
+                onClick={() => setMovementType('retiro')}
+                className={`flex-1 py-2 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  movementType === 'retiro' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <MinusCircle size={14} />
+                Retirar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMovementType('transferencia');
+                  const otherAcc = accounts.find(a => a.id !== movementAccount.id);
+                  if (otherAcc && !movementFormData.targetAccountId) {
+                    setMovementFormData(prev => ({ ...prev, targetAccountId: otherAcc.id }));
+                  }
+                }}
+                className={`flex-1 py-2 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  movementType === 'transferencia' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <ArrowRightLeft size={14} />
+                Transferir
+              </button>
+            </div>
+
+            <div className={`p-4 border-b border-slate-100 flex justify-between items-center ${
+              movementType === 'deposito' ? 'bg-emerald-50' : movementType === 'retiro' ? 'bg-rose-50' : 'bg-blue-50'
             }`}>
-              <h3 className={`font-extrabold text-sm ${movementType === 'deposito' ? 'text-emerald-900' : 'text-rose-900'}`}>
-                {movementType === 'deposito' ? '+ Abonar Dinero a Cuenta' : '- Retirar Dinero de Cuenta'}
+              <h3 className={`font-extrabold text-sm ${
+                movementType === 'deposito' ? 'text-emerald-900' : movementType === 'retiro' ? 'text-rose-900' : 'text-blue-900'
+              }`}>
+                {movementType === 'deposito' ? '+ Abonar Dinero a Cuenta' : movementType === 'retiro' ? '- Retirar Dinero de Cuenta' : '⇆ Transferir Dinero entre Cuentas'}
               </h3>
               <button onClick={() => setShowMovementModal(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
                 <X size={18} />
@@ -945,10 +1092,34 @@ export default function BankAccountsModule() {
 
             <form onSubmit={handleSaveMovement} className="p-6 space-y-4 text-xs font-semibold">
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-[10px] text-slate-400 font-bold uppercase">Cuenta Seleccionada</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase">
+                  {movementType === 'transferencia' ? 'Cuenta Origen' : 'Cuenta Seleccionada'}
+                </span>
                 <p className="font-extrabold text-slate-800 text-sm">{movementAccount.name}</p>
                 <p className="text-[10px] text-slate-500 font-semibold">Saldo actual: ${fmt(movementAccount.balance)}</p>
               </div>
+
+              {/* Selector de Cuenta Destino para Transferencias */}
+              {movementType === 'transferencia' && (
+                <div>
+                  <label className="block text-slate-600 mb-1 font-bold">Cuenta Destino *</label>
+                  <select
+                    required
+                    value={movementFormData.targetAccountId}
+                    onChange={(e) => setMovementFormData({ ...movementFormData, targetAccountId: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                  >
+                    <option value="" disabled>Selecciona la cuenta de destino...</option>
+                    {accounts
+                      .filter(a => a.id !== movementAccount.id)
+                      .map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name} (Saldo: ${fmt(acc.balance)})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block text-slate-600 mb-1 font-bold">Monto ($) *</label>
@@ -968,7 +1139,13 @@ export default function BankAccountsModule() {
                 <input
                   type="text"
                   required
-                  placeholder={movementType === 'deposito' ? 'ej. Depósito por transferencia clientes' : 'ej. Retiro para caja chica'}
+                  placeholder={
+                    movementType === 'deposito' 
+                      ? 'ej. Depósito por transferencia clientes' 
+                      : movementType === 'retiro' 
+                      ? 'ej. Retiro para caja chica' 
+                      : 'ej. Traspaso de fondos entre cuentas'
+                  }
                   value={movementFormData.description}
                   onChange={(e) => setMovementFormData({ ...movementFormData, description: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
@@ -987,10 +1164,20 @@ export default function BankAccountsModule() {
                   type="submit"
                   disabled={submitting}
                   className={`px-5 py-2 rounded-xl font-bold text-white shadow-md transition-all ${
-                    movementType === 'deposito' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+                    movementType === 'deposito' 
+                      ? 'bg-emerald-600 hover:bg-emerald-700' 
+                      : movementType === 'retiro' 
+                      ? 'bg-rose-600 hover:bg-rose-700' 
+                      : 'bg-blue-600 hover:bg-blue-700'
                   }`}
                 >
-                  {submitting ? 'Procesando...' : movementType === 'deposito' ? 'Confirmar Abono' : 'Confirmar Retiro'}
+                  {submitting 
+                    ? 'Procesando...' 
+                    : movementType === 'deposito' 
+                    ? 'Confirmar Abono' 
+                    : movementType === 'retiro' 
+                    ? 'Confirmar Retiro' 
+                    : 'Confirmar Transferencia'}
                 </button>
               </div>
             </form>

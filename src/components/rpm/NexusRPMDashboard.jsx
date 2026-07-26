@@ -230,6 +230,10 @@ export default function NexusRPMDashboard() {
   const paceAhead        = coveragePct >= daysPct;
   const paceDiff         = Math.abs(coveragePct - daysPct);
 
+  // Monto que debería llevar acumulado a la fecha para estar al ritmo proporcional del mes
+  const expectedSalesToDate = (netTotalCosts * daysPct) / 100;
+  const salesVsExpectedDiff = netSales - expectedSalesToDate;
+
   // ── Insights del Asesor (useMemo SIEMPRE antes del early return) ──
   const insights = useMemo(() => buildInsights({
     salesTotal: netSales, opexTotal: netOpexTotal, resultado, margenPct: netMargenPct,
@@ -418,25 +422,32 @@ export default function NexusRPMDashboard() {
             Punto de Equilibrio Operativo
           </h3>
 
-          <div className="grid grid-cols-2 gap-6 mb-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 bg-slate-50 p-4 rounded-xl border border-slate-150">
             <div>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Ventas Actuales (Neto)*</p>
-              <p className="text-xl font-black text-slate-900">${fmt(netSales)}</p>
+              <p className="text-lg font-black text-slate-900">${fmt(netSales)}</p>
+              <p className="text-[10px] font-semibold text-slate-500 mt-0.5">Lleva: {coveragePct.toFixed(1)}% de la meta</p>
               {costoRepuestos > 0 && (
-                <p className="text-[9px] text-slate-400 mt-0.5 font-medium">Excluye repuestos: ${fmt(costoRepuestos)}</p>
+                <p className="text-[9px] text-slate-400 font-medium leading-none mt-1">Excluye repuestos: ${fmt(costoRepuestos)}</p>
               )}
             </div>
             <div>
+              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider mb-1">Debería Llevar Hoy ({daysPct.toFixed(1)}%)</p>
+              <p className="text-lg font-black text-blue-700">${fmt(expectedSalesToDate)}</p>
+              <p className="text-[10px] font-semibold text-blue-600 mt-0.5">Avance de tiempo del mes</p>
+            </div>
+            <div>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Meta de Costos Netos</p>
-              <p className="text-xl font-black text-slate-900">${fmt(netTotalCosts)}</p>
+              <p className="text-lg font-black text-slate-800">${fmt(netTotalCosts)}</p>
+              <p className="text-[10px] font-semibold text-slate-500 mt-0.5">Costos Fijos + Var. Netos</p>
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <p className="text-[10px] font-bold text-slate-500 uppercase">Progreso de cobertura</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Progreso de cobertura de meta</p>
               <p className={`text-xs font-extrabold ${isBreakEven ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {coveragePct.toFixed(1)}%
+                {coveragePct.toFixed(1)}% de ${fmt(netTotalCosts)}
               </p>
             </div>
             <div className="h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner">
@@ -447,16 +458,30 @@ export default function NexusRPMDashboard() {
             </div>
           </div>
 
-          <div className={`mt-5 flex items-center gap-2 text-xs font-bold rounded-xl px-4 py-3 ${
-            isBreakEven
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-              : 'bg-rose-50 text-rose-700 border border-rose-200'
-          }`}>
-            {isBreakEven
-              ? <><CheckCircle size={15} /> Operando por sobre el Punto de Equilibrio (Rentable).</>
-              : <><AlertTriangle size={15} /> Aún bajo el Punto de Equilibrio — faltan ${fmt(netTotalCosts - netSales)} en ventas netas.</>
-            }
-          </div>
+          {/* Análisis de avance del mes a la fecha */}
+          {daysElapsed > 0 && (
+            <div className={`mt-4 p-3.5 rounded-xl border text-xs space-y-1 ${
+              salesVsExpectedDiff >= 0 
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                : 'bg-amber-50 text-amber-800 border-amber-200'
+            }`}>
+              <div className="flex items-center gap-2 font-bold">
+                {salesVsExpectedDiff >= 0 
+                  ? <CheckCircle size={16} className="text-emerald-600 shrink-0" /> 
+                  : <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                }
+                <span>
+                  {salesVsExpectedDiff >= 0
+                    ? `Ritmo óptimo: +$${fmt(salesVsExpectedDiff)} por sobre lo esperado para el día ${daysElapsed}`
+                    : `Ritmo atrasado: -$${fmt(Math.abs(salesVsExpectedDiff))} por debajo del ritmo esperado para el día ${daysElapsed}`
+                  }
+                </span>
+              </div>
+              <p className="text-[11px] font-medium text-slate-600 pl-6 leading-relaxed">
+                Al día <strong>{daysElapsed} de {daysInMonth} ({daysPct.toFixed(1)}% del mes)</strong> deberías llevar acumulados <strong>${fmt(expectedSalesToDate)}</strong> en ventas netas para estar en punto de equilibrio proporcional. Actualmente llevas <strong>${fmt(netSales)}</strong> ({coveragePct.toFixed(1)}%).
+              </p>
+            </div>
+          )}
 
           {/* Mini desglose de costos */}
           <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-3 text-[11px]">
