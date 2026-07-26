@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { useNexusContext } from '../context/NexusContext';
+import { useNexusContext, isUUID } from '../context/NexusContext';
 
 export const useNexusRPM = () => {
   const { companyId, selectedMonth, selectedYear, globalRefreshTick } = useNexusContext();
@@ -44,7 +44,10 @@ export const useNexusRPM = () => {
   };
 
   useEffect(() => {
-    if (!companyId) return;
+    if (!companyId || !isUUID(companyId)) {
+      setLoading(false);
+      return;
+    }
 
     const fetchFinancialData = async () => {
       if (isInitialLoad.current) {
@@ -451,7 +454,7 @@ export const useNexusRPM = () => {
   }, [companyId, selectedMonth, selectedYear, trigger, globalRefreshTick]);
 
   const addExpense = async (expenseData) => {
-    if (!companyId) return { error: 'No company ID' };
+    if (!companyId || !isUUID(companyId)) return { error: 'No valid company ID' };
     
     const { data: newExpense, error } = await supabase
       .schema('garage')
@@ -547,7 +550,7 @@ export const useNexusRPM = () => {
   };
 
   const updateExpense = async (id, expenseData) => {
-    if (!companyId) return { error: 'No company ID' };
+    if (!companyId || !isUUID(companyId)) return { error: 'No valid company ID' };
 
     const { data: updatedExpense, error } = await supabase
       .schema('garage')
