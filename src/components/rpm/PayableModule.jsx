@@ -51,7 +51,7 @@ const DEFAULT_CAPEX_CATEGORIES = [
 
 export default function PayableModule() {
   const { data: { allExpenses }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
-  const { companyId } = useNexusContext();
+  const { companyId, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear } = useNexusContext();
 
   const [activeTab, setActiveTab] = useState('facturas'); // 'facturas' o 'proveedores'
   const [saving, setSaving] = useState(false);
@@ -513,6 +513,18 @@ export default function PayableModule() {
 
         setExpenseDetails(updatedDetails);
         localStorage.setItem(detailsKey, JSON.stringify(updatedDetails));
+      }
+
+      // Auto-sincronizar el período activo si la fecha de emisión corresponde a otro mes/año
+      if (newInvoice.fechaEmision) {
+        const [expYr, expMo] = newInvoice.fechaEmision.split('T')[0].split('-').map(Number);
+        const targetMonth = expMo - 1;
+        const targetYear = expYr;
+
+        if (targetMonth !== selectedMonth || targetYear !== selectedYear) {
+          if (setSelectedMonth) setSelectedMonth(targetMonth);
+          if (setSelectedYear) setSelectedYear(targetYear);
+        }
       }
 
       // Resetear formulario

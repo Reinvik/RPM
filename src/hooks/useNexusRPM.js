@@ -453,25 +453,75 @@ export const useNexusRPM = () => {
     fetchFinancialData();
   }, [companyId, selectedMonth, selectedYear, trigger, globalRefreshTick]);
 
-  const addExpense = async (expenseData) => {
-    if (!companyId || !isUUID(companyId)) return { error: 'No valid company ID' };
-    
-    const { data: newExpense, error } = await supabase
-      .schema('garage')
-      .from('financial_expenses')
-      .insert([{
-        ...expenseData,
-        company_id: companyId
-      }])
-      .select()
-      .single();
+  // ── Sincronizador automático de la cola de guardado offline ──
+  useEffect(() => {
+    if (!companyId || !isUUID(companyId)) return;
+    const syncOfflineQueue = async () => {
+      const draftKey = `nexus_rpm_pending_queue_${companyId}`;
+      const pendingList = JSON.parse(localStorage.getItem(draftKey) || '[]');
+      if (!Array.isArray(pendingList) || pendingList.length === 0) return;
 
-    if (error) {
-      console.error("Error adding expense:", error);
-      return { error };
+      console.log(`[useNexusRPM] Intentando sincronizar ${pendingList.length} egresos offline...`);
+      const remaining = [];
+      let syncedCount = 0;
+
+      for (const item of pendingList) {
+        const { id, created_at, ...cleanData } = item;
+        const { error } = await supabase
+          .schema('garage')
+          .from('financial_expenses')
+          .insert([{ ...cleanData, company_id: companyId }]);
+
+        if (error) {
+          console.error("Error resincronizando egreso offline:", error);
+          remaining.push(item);
+        } else {
+          syncedCount++;
+        }
+      }
+
+      localStorage.setItem(draftKey, JSON.stringify(remaining));
+      if (syncedCount > 0) {
+        setTrigger(prev => prev + 1);
+      }
+    };
+
+    syncOfflineQueue();
+  }, [companyId, trigger]);
+
+  const addExpense = async (expenseData) => {
+    if (!companyId || !isUUID(companyId)) return { error: 'Empresa no válida seleccionada' };
+    
+    const draftKey = `nexus_rpm_pending_queue_${companyId}`;
+    const pendingList = JSON.parse(localStorage.getItem(draftKey) || '[]');
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const tempExpense = { ...expenseData, id: tempId, company_id: companyId, created_at: new Date().toISOString() };
+
+    let newExpense = null;
+    let isOffline = false;
+
+    try {
+      const { data, error } = await supabase
+        .schema('garage')
+        .from('financial_expenses')
+        .insert([{
+          ...expenseData,
+          company_id: companyId
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      newExpense = data;
+    } catch (err) {
+      console.warn("[addExpense] Conexión inestable o error de BD. Guardando en respaldo local offline:", err);
+      isOffline = true;
+      newExpense = tempExpense;
+      pendingList.push(tempExpense);
+      localStorage.setItem(draftKey, JSON.stringify(pendingList));
     }
 
-    // Actualizar estado local
+    // Actualizar estado local inmediatamente (Optimistic UI Update)
     setData(prev => {
       if (!newExpense.fecha) return prev;
       const [yr, mo] = newExpense.fecha.split('-').map(Number);
@@ -501,16 +551,19 @@ export const useNexusRPM = () => {
         }
       }
 
+      const allExpenses = [...(prev.allExpenses || []).filter(e => e.id !== tempId), newExpense];
+
       return {
         ...prev,
         expenses,
         fixedCosts,
-        variableCosts
+        variableCosts,
+        allExpenses
       };
     });
 
     setTrigger(prev => prev + 1);
-    return { data: newExpense };
+    return { data: newExpense, isOffline };
   };
 
   const deleteExpense = async (id) => {
@@ -529,6 +582,7 @@ export const useNexusRPM = () => {
     setData(prev => {
       const deleted = prev.expenses.find(e => e.id === id);
       const expenses = prev.expenses.filter(e => e.id !== id);
+      const allExpenses = (prev.allExpenses || []).filter(e => e.id !== id);
       let fixedCosts = prev.fixedCosts;
       let variableCosts = prev.variableCosts;
 
@@ -540,6 +594,7 @@ export const useNexusRPM = () => {
       return {
         ...prev,
         expenses,
+        allExpenses,
         fixedCosts,
         variableCosts
       };
@@ -550,7 +605,7 @@ export const useNexusRPM = () => {
   };
 
   const updateExpense = async (id, expenseData) => {
-    if (!companyId || !isUUID(companyId)) return { error: 'No valid company ID' };
+    if (!companyId || !isUUID(companyId)) return { error: 'Empresa no válida seleccionada' };
 
     const { data: updatedExpense, error } = await supabase
       .schema('garage')
@@ -568,6 +623,7 @@ export const useNexusRPM = () => {
     // Actualizar estado local
     setData(prev => {
       const updatedExpenses = prev.expenses.map(e => e.id === id ? { ...e, ...updatedExpense } : e);
+      const updatedAllExpenses = (prev.allExpenses || []).map(e => e.id === id ? { ...e, ...updatedExpense } : e);
       let fixedCosts = prev.fixedCosts;
       let variableCosts = prev.variableCosts;
 
@@ -585,6 +641,7 @@ export const useNexusRPM = () => {
       return {
         ...prev,
         expenses: updatedExpenses,
+        allExpenses: updatedAllExpenses,
         fixedCosts,
         variableCosts
       };

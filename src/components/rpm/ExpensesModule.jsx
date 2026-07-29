@@ -56,7 +56,7 @@ const DEFAULT_CAPEX_CATEGORIES = [
 
 export default function ExpensesModule() {
   const { data: { expenses, allExpenses, mechanics }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
-  const { companyId, selectedMonth, selectedYear } = useNexusContext();
+  const { companyId, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear } = useNexusContext();
   
   const [showSueldosModal, setShowSueldosModal] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -69,6 +69,32 @@ export default function ExpensesModule() {
   
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  // Auto-dismiss toast de notificación
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  // Pre-poblar fecha por defecto según el período activo (mes y año seleccionado en la cabecera)
+  useEffect(() => {
+    if (showForm && !editingExpense) {
+      const today = new Date();
+      const currentRealMonth = today.getMonth();
+      const currentRealYear = today.getFullYear();
+      let dayStr = String(today.getDate()).padStart(2, '0');
+      
+      // Si el período activo no es el mes actual, usar el día 01 por defecto
+      if (selectedMonth !== currentRealMonth || selectedYear !== currentRealYear) {
+        dayStr = '01';
+      }
+      
+      setFecha(`${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${dayStr}`);
+    }
+  }, [showForm, editingExpense, selectedMonth, selectedYear]);
 
   // Estados para Edición y Registro en Cuotas
   const [editingExpense, setEditingExpense] = useState(null);
@@ -864,6 +890,25 @@ export default function ExpensesModule() {
         }
       }
       
+      // Auto-sincronizar el período activo si la fecha corresponde a otro mes/año
+      const [expYr, expMo] = fecha.split('T')[0].split('-').map(Number);
+      const targetMonth = expMo - 1;
+      const targetYear = expYr;
+
+      let periodSwitchNotice = '';
+      if (targetMonth !== selectedMonth || targetYear !== selectedYear) {
+        setSelectedMonth(targetMonth);
+        setSelectedYear(targetYear);
+        periodSwitchNotice = ` Se cambió el período activo a ${getOriginalMonthName(fecha)} para visualizar el gasto.`;
+      }
+
+      // Notificación Toast de éxito
+      setToast({
+        type: 'success',
+        title: 'Egreso Guardado Con Éxito',
+        message: `"$${fmt(monto)} - ${finalCategoria}" registrado correctamente en el sistema.${periodSwitchNotice}`
+      });
+      
       // Resetear campos
       setShowForm(false);
       setCategoria('');
@@ -884,7 +929,11 @@ export default function ExpensesModule() {
       setDiaVencimientoFijo('');
     } catch (err) {
       console.error(err);
-      alert("Error al guardar egreso: " + (err.message || err));
+      setToast({
+        type: 'error',
+        title: 'Error al Guardar Egreso',
+        message: err.message || String(err)
+      });
     } finally {
       setSaving(false);
     }
@@ -1089,6 +1138,28 @@ export default function ExpensesModule() {
 
   return (
     <div className="space-y-6 text-slate-900">
+
+      {/* Toast de Notificación de Guardado Seguro */}
+      {toast && (
+        <div className={`fixed top-5 right-5 z-50 max-w-md p-4 rounded-2xl shadow-2xl border flex items-start gap-3 animate-fade-in transition-all ${
+          toast.type === 'success' ? 'bg-emerald-900/95 border-emerald-500 text-emerald-100' :
+          toast.type === 'warning' ? 'bg-amber-900/95 border-amber-500 text-amber-100' :
+          'bg-rose-900/95 border-rose-500 text-rose-100'
+        }`}>
+          <div className="p-1.5 rounded-xl bg-white/10 shrink-0 mt-0.5">
+            {toast.type === 'success' ? <CheckCircle2 size={18} className="text-emerald-400" /> :
+             toast.type === 'warning' ? <AlertTriangle size={18} className="text-amber-400" /> :
+             <AlertTriangle size={18} className="text-rose-400" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="font-extrabold text-sm leading-tight">{toast.title}</h4>
+            <p className="text-xs font-semibold opacity-90 mt-1 leading-normal">{toast.message}</p>
+          </div>
+          <button onClick={() => setToast(null)} className="text-white/60 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Modal de Confirmación global (reemplaza window.confirm) */}
       <ConfirmModal
