@@ -1,6 +1,8 @@
 import React from 'react';
 import { Target, TrendingUp, TrendingDown, Clock, CheckCircle2, AlertTriangle, Calendar } from 'lucide-react';
 
+const fmt = (val) => Math.round(val || 0).toLocaleString('es-CL');
+
 export default function BreakEvenCard({ 
   salesTotal = 0, 
   fixedCosts = 0, 
@@ -29,8 +31,6 @@ export default function BreakEvenCard({
   const salesVsExpectedDiff = netSales - expectedSalesToDate;
   const isBreakEven = netSales >= totalCosts;
   const isAheadOfPace = salesVsExpectedDiff >= 0;
-
-  const fmt = (val) => Math.round(val || 0).toLocaleString('es-CL');
 
   return (
     <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden space-y-5">

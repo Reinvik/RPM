@@ -55,6 +55,11 @@ const isFixedExpense = (catName) => {
   return FIXED_KEYWORDS.some(kw => name.includes(kw));
 };
 
+const fmt = (num) => {
+  if (num === undefined || num === null) return '0';
+  return Math.round(num).toLocaleString('es-CL');
+};
+
 export default function CashFlowModule() {
   const { companyName, companyId } = useNexusContext();
   const { data: { yearlyCashflow }, loading } = useNexusRPM();
@@ -103,11 +108,6 @@ export default function CashFlowModule() {
       </div>
     );
   }
-
-  const fmt = (num) => {
-    if (num === undefined || num === null) return '0';
-    return Math.round(num).toLocaleString('es-CL');
-  };
 
   // 1. Obtener todas las categorías de gastos dinámicamente
   const allExpenseCategories = Array.from(new Set([

@@ -49,6 +49,8 @@ const DEFAULT_CAPEX_CATEGORIES = [
   'Vehículos'
 ];
 
+const fmt = (num) => Math.round(Number(num) || 0).toLocaleString('es-CL');
+
 export default function PayableModule() {
   const { data: { allExpenses }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
   const { companyId, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear } = useNexusContext();
@@ -613,8 +615,6 @@ export default function PayableModule() {
       }
     });
   };
-
-  const fmt = (num) => Math.round(num).toLocaleString('es-CL');
 
   if (loading) {
     return (

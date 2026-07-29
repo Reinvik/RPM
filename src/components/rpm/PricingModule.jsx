@@ -24,8 +24,9 @@ import {
   ArrowDownRight
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useNexusContext } from '../../context/NexusContext';
 import ConfirmModal from './ConfirmModal';
+
+const fmt = (num) => Math.round(Number(num) || 0).toLocaleString('es-CL');
 
 export default function PricingModule() {
   const { companyId } = useNexusContext();
@@ -764,8 +765,6 @@ export default function PricingModule() {
       setSavingPartId(null);
     }
   };
-
-  const fmt = (num) => Math.round(num || 0).toLocaleString('es-CL');
 
   // ==========================================
   // LOADER GENERAL

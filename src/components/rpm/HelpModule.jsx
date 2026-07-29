@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 
+const fmt = (num) => Math.round(Number(num) || 0).toLocaleString('es-CL');
+
 const GLOSSARY = [
   {
     term: 'IVA Débito Fiscal',
@@ -219,8 +221,6 @@ export default function HelpModule() {
   const baseDecember = simulationData.baseSaldosFinales[11];
   const simDecember = simulationData.simSaldosFinales[11];
   const decemberDiff = simDecember - baseDecember;
-
-  const fmt = (num) => Math.round(num).toLocaleString('es-CL');
 
   return (
     <div className="space-y-6 text-slate-900">

@@ -1,6 +1,8 @@
 import React from 'react';
 import { Calculator, ArrowUpRight, ArrowDownRight, Percent, Info } from 'lucide-react';
 
+const fmt = (num) => Math.round(Number(num) || 0).toLocaleString('es-CL');
+
 export default function VatCalculatorCard({ salesTotal, gastosConIva }) {
   // En Chile las ventas (boletas/facturas) y los egresos (gastos con factura) se ingresan como montos BRUTOS.
   // El cálculo correcto de IVA (19%) extrae el Neto dividiendo por 1.19, y luego calcula el 19% del Neto.
@@ -12,8 +14,6 @@ export default function VatCalculatorCard({ salesTotal, gastosConIva }) {
 
   const ivaDiferencia = ivaDebito - ivaCredito;
   const esRemanente = ivaDiferencia < 0;
-
-  const fmt = (num) => Math.round(num).toLocaleString('es-CL');
 
   return (
     <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xl relative overflow-hidden transition-all duration-300 hover:shadow-2xl">
