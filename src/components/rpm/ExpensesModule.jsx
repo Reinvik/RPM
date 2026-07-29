@@ -30,7 +30,8 @@ import {
   Fuel,
   Smartphone,
   FileText,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Filter
 } from 'lucide-react';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
