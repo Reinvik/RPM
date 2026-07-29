@@ -119,6 +119,17 @@ const DEFAULT_CAPEX_CATEGORIES = [
   'Vehículos'
 ];
 
+// Helper global de formateo de moneda (evita errores de TDZ/Hoisting en producción)
+const fmt = (num) => Math.round(Number(num) || 0).toLocaleString('es-CL');
+
+// Helper global para nombres de mes original
+const getOriginalMonthName = (fechaStr) => {
+  if (!fechaStr) return '';
+  const [yr, mo] = fechaStr.split('T')[0].split('-').map(Number);
+  const date = new Date(yr, mo - 1, 1);
+  return date.toLocaleString('es-ES', { month: 'long', year: 'numeric' });
+};
+
 export default function ExpensesModule() {
   const { data: { expenses, allExpenses, mechanics }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
   const { companyId, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear } = useNexusContext();
@@ -756,13 +767,6 @@ export default function ExpensesModule() {
     return expYear < selectedYear || (expYear === selectedYear && expMonth < selectedMonth);
   };
 
-  const getOriginalMonthName = (fechaStr) => {
-    if (!fechaStr) return '';
-    const [yr, mo] = fechaStr.split('-').map(Number);
-    const date = new Date(yr, mo - 1, 1);
-    return date.toLocaleString('es-ES', { month: 'long', year: 'numeric' });
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -1189,8 +1193,6 @@ export default function ExpensesModule() {
     });
     setShowSupplierModal(true);
   };
-
-  const fmt = (num) => Math.round(num).toLocaleString('es-CL');
 
   if (loading) {
     return (
