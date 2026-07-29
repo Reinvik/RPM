@@ -23,13 +23,78 @@ import {
   Search,
   Mail,
   Phone,
-  BarChart3
+  BarChart3,
+  Tag,
+  ShieldCheck,
+  Wrench,
+  Fuel,
+  Smartphone,
+  FileText,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
 import { useNexusContext } from '../../context/NexusContext';
 import ConfirmModal from './ConfirmModal';
 import ExpensesReport from './ExpensesReport';
 import SueldosDetailModal from './SueldosDetailModal';
+
+const getCategoryVisuals = (categoriaName) => {
+  const cat = (categoriaName || '').toLowerCase();
+  if (cat.includes('sueldo')) {
+    return {
+      icon: Users,
+      bg: 'bg-indigo-50 text-indigo-700 border-indigo-200/80',
+      badgeBg: 'bg-indigo-600 text-white',
+      accentColor: '#4f46e5'
+    };
+  }
+  if (cat.includes('repuesto') || cat.includes('respuesto') || cat.includes('mantenimiento') || cat.includes('reparaci')) {
+    return {
+      icon: Wrench,
+      bg: 'bg-amber-50 text-amber-800 border-amber-200/80',
+      badgeBg: 'bg-amber-600 text-white',
+      accentColor: '#d97706'
+    };
+  }
+  if (cat.includes('bencina') || cat.includes('combustible')) {
+    return {
+      icon: Fuel,
+      bg: 'bg-orange-50 text-orange-800 border-orange-200/80',
+      badgeBg: 'bg-orange-600 text-white',
+      accentColor: '#ea580c'
+    };
+  }
+  if (cat.includes('aseo') || cat.includes('insumo de taller') || cat.includes('limpieza')) {
+    return {
+      icon: Sparkles,
+      bg: 'bg-teal-50 text-teal-800 border-teal-200/80',
+      badgeBg: 'bg-teal-600 text-white',
+      accentColor: '#0d9488'
+    };
+  }
+  if (cat.includes('telefono') || cat.includes('teléfono') || cat.includes('wom') || cat.includes('entel') || cat.includes('software') || cat.includes('oficina')) {
+    return {
+      icon: Smartphone,
+      bg: 'bg-purple-50 text-purple-800 border-purple-200/80',
+      badgeBg: 'bg-purple-600 text-white',
+      accentColor: '#9333ea'
+    };
+  }
+  if (cat.includes('auditoria') || cat.includes('auditoría') || cat.includes('contador')) {
+    return {
+      icon: ShieldCheck,
+      bg: 'bg-emerald-50 text-emerald-800 border-emerald-200/80',
+      badgeBg: 'bg-emerald-600 text-white',
+      accentColor: '#059669'
+    };
+  }
+  return {
+    icon: Tag,
+    bg: 'bg-slate-100 text-slate-800 border-slate-200/80',
+    badgeBg: 'bg-slate-700 text-white',
+    accentColor: '#475569'
+  };
+};
 
 const DEFAULT_OPEX_CATEGORIES = [
   'Insumo de aseo',
@@ -2136,170 +2201,285 @@ export default function ExpensesModule() {
       {/* CONTENIDO DE PESTAÑA: GASTOS DEL PERIODO */}
       {activeTab === 'gastos' && (
         <div className="space-y-6 animate-fade-in">
-          {/* Resumen Cards (OPEX, SUELDOS, IVA, CAPEX) */}
+          {/* Resumen Cards con Gestión Visual (OPEX, SUELDOS, IVA, CAPEX) */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
             
-            {/* OPEX Summary Card */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-3xl"></div>
+            {/* OPEX Summary Card (Vibrant Rose/Red Accent) */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-500 to-pink-500"></div>
+              <div className="absolute top-2 right-2 w-28 h-28 bg-rose-500/5 rounded-full blur-2xl pointer-events-none"></div>
               <div>
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Gastos Operativos (OPEX Bruto)</span>
-                  <TrendingUp className="text-rose-500" size={20} />
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-400 text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                    <Receipt size={14} className="text-rose-500" />
+                    Gastos Operativos (OPEX Bruto)
+                  </span>
+                  <span className="text-[9px] font-black bg-rose-50 text-rose-600 border border-rose-200/80 px-2 py-0.5 rounded-full">
+                    Estructura
+                  </span>
                 </div>
-                <div className="text-3xl font-black text-slate-800">${fmt(totalOpex)}</div>
-              </div>
-              <div className="space-y-2 mt-4 pt-3 border-t border-slate-100 text-xs font-bold text-slate-500">
-                <div className="flex justify-between text-[10px]">
-                  <span className="text-slate-400 uppercase">Fijos: <span className="text-slate-700 font-extrabold">${fmt(opexFijos)}</span></span>
-                  <span className="text-slate-400 uppercase">Variables: <span className="text-slate-700 font-extrabold">${fmt(opexVariables)}</span></span>
-                </div>
-                {repuestosExpenses > 0 ? (
-                  <div className="bg-blue-50/80 p-2 rounded-xl border border-blue-100 text-[10px] space-y-0.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-blue-700 font-extrabold">Meta Netos (P. Equilibrio):</span>
-                      <span className="text-blue-950 font-black">${fmt(opexNetoPuntoEquilibrio)}</span>
+                <div className="text-3xl font-black text-slate-900 tracking-tight">${fmt(totalOpex)}</div>
+
+                {/* Barra Visual Proporcional (Fijos vs Variables) */}
+                {totalOpex > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
+                      <div 
+                        className="h-full bg-rose-500 transition-all duration-500" 
+                        style={{ width: `${(opexFijos / totalOpex) * 100}%` }}
+                        title={`Fijos: $${fmt(opexFijos)} (${((opexFijos / totalOpex) * 100).toFixed(1)}%)`}
+                      />
+                      <div 
+                        className="h-full bg-blue-500 transition-all duration-500" 
+                        style={{ width: `${(opexVariables / totalOpex) * 100}%` }}
+                        title={`Variables: $${fmt(opexVariables)} (${((opexVariables / totalOpex) * 100).toFixed(1)}%)`}
+                      />
                     </div>
-                    <div className="text-[9px] text-blue-600/80 font-semibold">
-                      Excluye repuestos: -${fmt(repuestosExpenses)}
+                    <div className="flex justify-between text-[10px] font-bold">
+                      <span className="text-rose-600 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                        Fijos: ${fmt(opexFijos)}
+                      </span>
+                      <span className="text-blue-600 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                        Var: ${fmt(opexVariables)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Meta Punto de Equilibrio */}
+              <div className="mt-4 pt-3 border-t border-slate-100 text-xs font-bold">
+                {repuestosExpenses > 0 ? (
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50/80 p-2.5 rounded-xl border border-blue-100/90 text-[10px] space-y-0.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-blue-700 font-black">Meta Netos (P. Equilibrio):</span>
+                      <span className="text-blue-950 font-black text-xs">${fmt(opexNetoPuntoEquilibrio)}</span>
+                    </div>
+                    <div className="text-[9px] text-blue-600/80 font-semibold flex justify-between items-center">
+                      <span>Sin repuestos</span>
+                      <span className="font-extrabold">-${fmt(repuestosExpenses)}</span>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-150 text-[10px]">
+                  <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-150 text-[10px]">
                     <span className="text-slate-400 font-bold uppercase">Op. sin Sueldos</span>
-                    <span className="text-slate-800 font-extrabold">${fmt(opexSinSueldos)}</span>
+                    <span className="text-slate-800 font-black text-xs">${fmt(opexSinSueldos)}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Sueldos Summary Card (Destacado Azul) */}
-            <div className="bg-gradient-to-br from-blue-50/70 via-indigo-50/30 to-white p-6 rounded-2xl border border-blue-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
-              <div className="absolute top-0 right-0 w-28 h-28 bg-blue-500/10 rounded-full blur-2xl"></div>
+            {/* Sueldos Summary Card (Electric Indigo/Blue Accent) */}
+            <div className="bg-gradient-to-br from-indigo-50/90 via-blue-50/40 to-white p-6 rounded-2xl border border-indigo-200/90 shadow-sm relative overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-blue-600"></div>
+              <div className="absolute top-2 right-2 w-28 h-28 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
               <div>
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-blue-700 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
-                    <Users size={16} className="text-blue-600" />
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-indigo-900 text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                    <Users size={15} className="text-indigo-600" />
                     Total Sueldos (Bruto)
                   </span>
-                  <span className="text-[9px] font-extrabold bg-blue-100/90 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
-                    Nómina Equipo
+                  <span className="text-[9px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-2xs">
+                    Nómina
                   </span>
                 </div>
-                <div className="text-3xl font-black text-blue-950">${fmt(totalSueldos)}</div>
+                <div className="text-3xl font-black text-indigo-950 tracking-tight">${fmt(totalSueldos)}</div>
+
+                {/* Meter de porcentaje del OPEX */}
+                {totalOpex > 0 && (
+                  <div className="mt-3 space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-bold text-indigo-800">
+                      <span>Proporción de OPEX</span>
+                      <span className="font-black text-xs">{((totalSueldos / totalOpex) * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="h-2 w-full bg-indigo-100 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-indigo-600 rounded-full transition-all duration-500" 
+                        style={{ width: `${Math.min(100, (totalSueldos / totalOpex) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center justify-between mt-6 pt-4 border-t border-blue-100/80">
-                <div className="text-[10px] text-slate-500 font-semibold">
-                  <span>{totalOpex > 0 ? `${((totalSueldos / totalOpex) * 100).toFixed(1)}% del OPEX` : 'Remuneraciones'}</span>
-                  {totalSueldosRegistrados > 0 && (
-                    <span className="block text-[9px] text-slate-400">Comprobantes: ${fmt(totalSueldosRegistrados)}</span>
+
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-indigo-100/90">
+                <div className="text-[10px] text-slate-500 font-bold">
+                  {totalSueldosRegistrados > 0 ? (
+                    <span className="block text-indigo-800 font-extrabold">Comprobantes: ${fmt(totalSueldosRegistrados)}</span>
+                  ) : (
+                    <span className="text-slate-400">Calculado de mecánicos</span>
                   )}
                 </div>
                 <button
                   onClick={() => setShowSueldosModal(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-extrabold px-3 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1 active:scale-95 cursor-pointer"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black px-3.5 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1.5 active:scale-95 cursor-pointer"
                 >
-                  <Users size={11} />
+                  <Users size={12} />
                   Ver Detalle
                 </button>
               </div>
             </div>
 
-            {/* IVA Summary Card */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl"></div>
+            {/* IVA Summary Card (Emerald Accent) */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-teal-500"></div>
+              <div className="absolute top-2 right-2 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>
               <div>
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Crédito IVA Recuperable</span>
-                  <Layers className="text-emerald-500" size={18} />
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-400 text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="text-emerald-500" size={15} />
+                    Crédito IVA Recuperable
+                  </span>
+                  <span className="text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    Fiscal
+                  </span>
                 </div>
-                <div className="text-2xl font-black text-emerald-600">${fmt(totalIvaCredito)}</div>
+                <div className="text-3xl font-black text-emerald-600 tracking-tight">${fmt(totalIvaCredito)}</div>
               </div>
-              <p className="text-[10px] text-slate-400 font-medium mt-4 pt-3 border-t border-slate-100">
-                19% recuperable de egresos afectos a impuestos de este periodo.
-              </p>
+              <div className="mt-4 pt-3 border-t border-slate-100 text-[10px] text-slate-400 font-medium">
+                19% recuperable de egresos afectos a impuestos de este período.
+              </div>
             </div>
 
-            {/* CAPEX Summary Card */}
-            <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-200/60 shadow-sm relative overflow-hidden flex flex-col justify-between opacity-85 hover:opacity-100 transition-opacity">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl"></div>
+            {/* CAPEX Summary Card (Violet Accent) */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-indigo-500"></div>
+              <div className="absolute top-2 right-2 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl pointer-events-none"></div>
               <div>
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Activos / CAPEX</span>
-                  <TrendingDown className="text-slate-400" size={16} />
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-slate-400 text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                    <Briefcase className="text-purple-500" size={15} />
+                    Activos / CAPEX
+                  </span>
+                  <span className="text-[9px] font-black bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full">
+                    Inversión
+                  </span>
                 </div>
-                <div className="text-xl font-bold text-slate-600">${fmt(totalCapex)}</div>
+                <div className="text-3xl font-black text-slate-800 tracking-tight">${fmt(totalCapex)}</div>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-200/50 text-[10px] font-semibold text-slate-400">
+              <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100 text-[10px] font-bold text-slate-500">
                 <div>
-                  <span className="block text-[9px] uppercase">Fijo</span>
-                  <span className="text-slate-500 font-bold">${fmt(capexFijos)}</span>
+                  <span className="block text-[9px] uppercase text-slate-400">Fijo</span>
+                  <span className="text-slate-800 font-black">${fmt(capexFijos)}</span>
                 </div>
                 <div>
-                  <span className="block text-[9px] uppercase">Variable</span>
-                  <span className="text-slate-500 font-bold">${fmt(capexVariables)}</span>
+                  <span className="block text-[9px] uppercase text-slate-400">Variable</span>
+                  <span className="text-slate-800 font-black">${fmt(capexVariables)}</span>
                 </div>
               </div>
             </div>
 
           </div>
 
-          {/* Listado con Pestañas Internas (OPEX vs CAPEX) */}
+          {/* Listado con Pestañas Internas y Gestión Visual (OPEX vs CAPEX) */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             
             {/* Barra de Sub-Tabs */}
             <div className="flex border-b border-slate-200 bg-slate-50/50 p-2 gap-2">
               <button
                 onClick={() => setExpensesSubTab('OPEX')}
-                className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold transition-all ${
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-black transition-all ${
                   expensesSubTab === 'OPEX'
                     ? 'bg-white text-slate-800 shadow-sm border border-slate-200/80'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
                 Gastos Operacionales (OPEX)
-                <span className="ml-1 text-xs bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full font-bold">
+                <span className="ml-1 text-xs bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full font-black">
                   ${fmt(totalOpex)}
                 </span>
               </button>
 
               <button
                 onClick={() => setExpensesSubTab('CAPEX')}
-                className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold transition-all ${
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-black transition-all ${
                   expensesSubTab === 'CAPEX'
                     ? 'bg-white text-slate-800 shadow-sm border border-slate-200/80'
                     : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
                 Inversión / Activos (CAPEX)
-                <span className="ml-1 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">
+                <span className="ml-1 text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full font-black">
                   ${fmt(totalCapex)}
                 </span>
               </button>
+            </div>
+
+            {/* Barra de Búsqueda y Filtros Visuales */}
+            <div className="p-4 border-b border-slate-100 bg-slate-50/70 flex flex-col md:flex-row gap-3 items-center justify-between">
+              {/* Buscador de Categoría / Proveedor */}
+              <div className="relative w-full md:w-72">
+                <Search size={15} className="absolute left-3.5 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar gasto o proveedor..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Filtros Rápidos (Pills) */}
+              <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
+                  <Filter size={11} /> Filtro:
+                </span>
+                {['Todos', 'Fijo', 'Variable', 'IVA'].map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setFilterType(f)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                      filterType === f
+                        ? 'bg-slate-800 text-white shadow-2xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    {f === 'IVA' ? '✨ Con IVA' : f}
+                  </button>
+                ))}
+                <span className="text-[11px] font-bold text-slate-400 ml-2">
+                  ({expensesSubTab === 'OPEX' ? filteredOpexList.length : filteredCapexList.length} egresos)
+                </span>
+              </div>
             </div>
 
             {/* Contenido de Sub-Tab Activo */}
             <div className="p-5">
               {expensesSubTab === 'OPEX' ? (
                 <div className="space-y-3 pr-1">
-                  {opex.length === 0 ? (
-                    <p className="text-slate-400 text-xs py-12 text-center font-medium">
-                      No hay gastos operacionales registrados en este período.
-                    </p>
+                  {filteredOpexList.length === 0 ? (
+                    <div className="py-12 text-center text-slate-400 text-xs font-semibold space-y-2">
+                      <p>No se encontraron gastos operacionales con los filtros aplicados.</p>
+                      {(searchQuery || filterType !== 'Todos') && (
+                        <button 
+                          onClick={() => { setSearchQuery(''); setFilterType('Todos'); }} 
+                          className="text-blue-600 hover:underline font-bold text-xs"
+                        >
+                          Limpiar Filtros
+                        </button>
+                      )}
+                    </div>
                   ) : (
-                    opex.map(exp => renderExpenseRow(exp))
+                    filteredOpexList.map(exp => renderExpenseRow(exp))
                   )}
                 </div>
               ) : (
                 <div className="space-y-3 pr-1">
-                  {capex.length === 0 ? (
-                    <p className="text-slate-400 text-xs py-12 text-center font-medium">
-                      No hay inversiones de capital (CAPEX) registradas en este período.
-                    </p>
+                  {filteredCapexList.length === 0 ? (
+                    <div className="py-12 text-center text-slate-400 text-xs font-semibold space-y-2">
+                      <p>No se encontraron inversiones (CAPEX) registradas en este período.</p>
+                    </div>
                   ) : (
-                    capex.map(exp => renderExpenseRow(exp))
+                    filteredCapexList.map(exp => renderExpenseRow(exp))
                   )}
                 </div>
               )}
@@ -2812,51 +2992,60 @@ export default function ExpensesModule() {
     </div>
   );
 
-  // Renderizar fila de gasto individual
+  // Renderizar fila de gasto individual con Gestión Visual
   function renderExpenseRow(exp) {
+    const visuals = getCategoryVisuals(exp.categoria);
+    const CategoryIcon = visuals.icon;
+
     if (exp.isVirtualSueldos) {
       return (
         <div 
           key={exp.id} 
-          className="flex justify-between items-center p-3.5 rounded-xl border bg-blue-50/40 border-blue-200/80 hover:bg-blue-50/70 transition-all duration-200 group"
+          className="flex justify-between items-center p-4 rounded-2xl border bg-gradient-to-r from-indigo-50/80 via-blue-50/40 to-white border-indigo-200/90 hover:border-indigo-300 shadow-2xs hover:shadow-md transition-all duration-200 group"
         >
-          <div className="flex-1 min-w-0 pr-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-extrabold text-blue-950 text-sm">
-                Pago Sueldos
-              </span>
-
-              <button
-                type="button"
-                onClick={() => setShowSueldosModal(true)}
-                className="bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 transition-all cursor-pointer shadow-xs active:scale-95"
-                title="Ver a quién pertenece cada sueldo y la cantidad bruta de egreso"
-              >
-                <Users size={11} />
-                Ver Detalle de Sueldos
-              </button>
-
-              <span className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                <Repeat size={10} />
-                Fijo (Nómina Equipo)
-              </span>
+          <div className="flex items-center gap-3.5 flex-1 min-w-0 pr-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+              <Users size={20} />
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 font-semibold">
-              <Calendar size={12} />
-              <span>Nómina Consolidada del Mes</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-black text-indigo-950 text-base">
+                  Pago Sueldos
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setShowSueldosModal(true)}
+                  className="bg-indigo-100 hover:bg-indigo-200 text-indigo-900 border border-indigo-300/80 text-[10px] font-black px-3 py-1 rounded-full inline-flex items-center gap-1 transition-all cursor-pointer shadow-2xs active:scale-95"
+                  title="Ver a quién pertenece cada sueldo y la cantidad bruta de egreso"
+                >
+                  <Users size={12} />
+                  Ver Detalle Nómina
+                </button>
+
+                <span className="bg-indigo-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                  <Repeat size={10} />
+                  Nómina Equipo (Fijo)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 font-semibold">
+                <Calendar size={12} className="text-indigo-400" />
+                <span>Consolidado automático del mes activo</span>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <p className="font-black text-sm text-blue-900">
+          <div className="flex items-center gap-3 shrink-0">
+            <p className="font-black text-base text-indigo-950">
               ${fmt(exp.monto)}
             </p>
             <button
               onClick={() => setShowSueldosModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-extrabold px-3 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black px-3.5 py-2 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
             >
-              <Users size={12} />
+              <Users size={13} />
               Ver Detalle
             </button>
           </div>
@@ -2873,127 +3062,115 @@ export default function ExpensesModule() {
     return (
       <div 
         key={exp.id} 
-        className={`flex justify-between items-center p-3.5 rounded-xl border transition-all duration-200 group ${
+        className={`flex justify-between items-center p-4 rounded-2xl border transition-all duration-200 group ${
           inherited 
-            ? 'bg-indigo-50/20 border-indigo-100/70 hover:bg-indigo-50/40' 
-            : 'bg-slate-50 border-slate-150 hover:bg-slate-100/50'
+            ? 'bg-indigo-50/20 border-indigo-150 hover:bg-indigo-50/40 hover:border-indigo-300' 
+            : 'bg-white border-slate-200/90 hover:bg-slate-50/80 hover:border-slate-300 shadow-2xs hover:shadow-sm'
         }`}
       >
-        <div className="flex-1 min-w-0 pr-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={exp.categoria}
-              disabled={updatingCategoryId === exp.id}
-              onChange={(e) => handleQuickCategoryChange(exp.id, e.target.value)}
-              className="font-bold text-slate-800 text-sm bg-transparent border-none py-0 px-1 pr-5 rounded cursor-pointer focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-colors hover:bg-slate-200/50 appearance-none disabled:opacity-50"
-              style={{
-                backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231e293b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right center',
-                backgroundSize: '11px'
-              }}
-            >
-              {allAvailableCategories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-            
-            {/* Botón Ver Detalle de Sueldos */}
-            {exp.categoria === 'Pago Sueldos' && (
-              <button
-                type="button"
-                onClick={() => setShowSueldosModal(true)}
-                className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 transition-all cursor-pointer hover:shadow-xs active:scale-95"
-                title="Ver a quién pertenece cada sueldo y la cantidad bruta de egreso"
-              >
-                <Users size={11} />
-                Ver Detalle de Sueldos
-              </button>
-            )}
-
-            {/* Badges de Recurrencia */}
-            {isFixed ? (
-              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
-                inherited
-                  ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
-                  : 'bg-blue-50 text-blue-600 border-blue-200'
-              }`}>
-                <Repeat size={10} />
-                {inherited ? 'Recurrente' : 'Fijo'}
-              </span>
-            ) : (
-              <span className="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                <Calendar size={10} />
-                Variable
-              </span>
-            )}
-
-            {/* Badge de IVA */}
-            {exp.aplica_credito_iva && (
-              <span className="bg-emerald-50 text-emerald-600 border border-emerald-200 text-[9px] font-extrabold px-1.5 py-0.5 rounded">
-                IVA (Cred.)
-              </span>
-            )}
-
-            {/* Badge de Factura si corresponde */}
-            {detail && detail.numeroFactura && (
-              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
-                detail.estadoPago === 'Pagado'
-                  ? 'bg-emerald-50 text-emerald-650 border-emerald-200'
-                  : 'bg-amber-50 text-amber-650 border-amber-200'
-              }`}>
-                <Receipt size={10} className="shrink-0" />
-                Factura N° {detail.numeroFactura} - {supplier ? supplier.nombre : 'Proveedor'} ({detail.estadoPago})
-              </span>
-            )}
-
-            {/* Badge para Gasto Fijo si corresponde */}
-            {detail && !detail.numeroFactura && exp.tipo === 'Fijo' && (
-              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
-                (detail.estadoPago?.[`${selectedYear}-${selectedMonth}`] === 'Pagado')
-                  ? 'bg-emerald-50 text-emerald-650 border-emerald-200'
-                  : 'bg-amber-50 text-amber-650 border-amber-200'
-              }`}>
-                <Clock size={10} className="shrink-0" />
-                Fijo: {detail.estadoPago?.[`${selectedYear}-${selectedMonth}`] || 'Pendiente'}
-              </span>
-            )}
-
-            {/* Badge para Gasto Variable Simple si corresponde */}
-            {detail && !detail.numeroFactura && exp.tipo === 'Variable' && (
-              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${
-                detail.estadoPago === 'Pagado'
-                  ? 'bg-emerald-50 text-emerald-650 border-emerald-200'
-                  : 'bg-amber-50 text-amber-650 border-amber-200'
-              }`}>
-                <Clock size={10} className="shrink-0" />
-                Variable: {detail.estadoPago || 'Pagado'}
-              </span>
-            )}
+        <div className="flex items-center gap-3.5 flex-1 min-w-0 pr-3">
+          {/* Badge Icono de Categoría Visual */}
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${visuals.bg} shadow-2xs`}>
+            <CategoryIcon size={19} />
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 font-semibold">
-            <Calendar size={12} />
-            <span>
-              {inherited 
-                ? `Inicio: ${getOriginalMonthName(exp.fecha)}` 
-                : new Date(exp.fecha + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
-              }
-            </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={exp.categoria}
+                disabled={updatingCategoryId === exp.id}
+                onChange={(e) => handleQuickCategoryChange(exp.id, e.target.value)}
+                className="font-black text-slate-850 text-sm bg-transparent border-none py-0 px-1 pr-5 rounded cursor-pointer focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-colors hover:bg-slate-100 appearance-none disabled:opacity-50"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right center',
+                  backgroundSize: '11px'
+                }}
+              >
+                {allAvailableCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+              
+              {/* Botón Ver Detalle de Sueldos si es categoría sueldos */}
+              {exp.categoria === 'Pago Sueldos' && (
+                <button
+                  type="button"
+                  onClick={() => setShowSueldosModal(true)}
+                  className="bg-indigo-100 hover:bg-indigo-200 text-indigo-900 border border-indigo-300 text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 transition-all cursor-pointer hover:shadow-xs active:scale-95"
+                  title="Ver a quién pertenece cada sueldo y la cantidad bruta"
+                >
+                  <Users size={11} />
+                  Ver Detalle de Sueldos
+                </button>
+              )}
+
+              {/* Badge de Recurrencia */}
+              {isFixed ? (
+                <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 border ${
+                  inherited
+                    ? 'bg-indigo-100 text-indigo-700 border-indigo-300'
+                    : 'bg-blue-100 text-blue-700 border-blue-300'
+                }`}>
+                  <Repeat size={10} />
+                  {inherited ? 'Recurrente' : 'Fijo'}
+                </span>
+              ) : (
+                <span className="bg-slate-100 text-slate-600 border border-slate-250 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                  <Calendar size={10} />
+                  Variable
+                </span>
+              )}
+
+              {/* Badge de IVA */}
+              {exp.aplica_credito_iva && (
+                <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-extrabold px-2 py-0.5 rounded-md">
+                  ✨ Crédito IVA (19%)
+                </span>
+              )}
+
+              {/* Badge de Factura si corresponde */}
+              {detail && detail.numeroFactura && (
+                <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 border ${
+                  detail.estadoPago === 'Pagado'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  <Receipt size={10} className="shrink-0" />
+                  Factura N° {detail.numeroFactura} - {supplier ? supplier.nombre : 'Proveedor'} ({detail.estadoPago})
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-semibold">
+              <span className="flex items-center gap-1">
+                <Calendar size={12} className="text-slate-400" />
+                {inherited 
+                  ? `Inicio: ${getOriginalMonthName(exp.fecha)}` 
+                  : new Date(exp.fecha + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                }
+              </span>
+              {inherited && (
+                <span className="text-[10px] text-indigo-500 font-extrabold">
+                  • Desde {getOriginalMonthName(exp.fecha)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <p className={`font-extrabold text-sm ${opexCategories.includes(exp.categoria) ? 'text-rose-500' : 'text-blue-600'}`}>
+        <div className="flex items-center gap-3 shrink-0">
+          <p className="font-black text-base text-slate-900">
             ${fmt(exp.monto)}
           </p>
-          
-          <div className="flex items-center gap-1">
+
+          <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
             {!inherited && (
               <button
                 onClick={() => handleStartEdit(exp)}
-                className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
-                title="Editar Gasto / Factura"
+                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+                title="Editar egreso"
               >
                 <Edit2 size={15} />
               </button>
@@ -3001,11 +3178,11 @@ export default function ExpensesModule() {
             <button
               onClick={() => handleDelete(exp)}
               disabled={isDeleting}
-              className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0"
-              title="Eliminar Gasto / Factura"
+              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              title="Eliminar egreso"
             >
               {isDeleting ? (
-                <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-3.5 h-3.5 border-2 border-rose-500 border-t-transparent rounded-full animate-spin"></div>
               ) : (
                 <Trash2 size={15} />
               )}
