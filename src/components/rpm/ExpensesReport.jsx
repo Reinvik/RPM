@@ -75,16 +75,18 @@ export default function ExpensesReport({
   // ── 1. Gastos del mes seleccionado ───────────────────────────────
   const monthExpenses = useMemo(() => {
     return (allExpenses || []).filter(e => {
-      const d = new Date(e.fecha);
-      return d.getFullYear() === selectedYear && d.getMonth() === selectedMonth;
+      if (!e.fecha) return false;
+      const [yr, mo] = e.fecha.split('T')[0].split('-').map(Number);
+      return yr === selectedYear && (mo - 1) === selectedMonth;
     });
   }, [allExpenses, selectedMonth, selectedYear]);
 
   // ── 2. Gastos del año seleccionado ───────────────────────────────
   const yearExpenses = useMemo(() => {
     return (allExpenses || []).filter(e => {
-      const d = new Date(e.fecha);
-      return d.getFullYear() === selectedYear;
+      if (!e.fecha) return false;
+      const [yr] = e.fecha.split('T')[0].split('-').map(Number);
+      return yr === selectedYear;
     });
   }, [allExpenses, selectedYear]);
 
@@ -123,10 +125,11 @@ export default function ExpensesReport({
     const data = MONTHS_SHORT.map((m, idx) => {
       const gastos = yearExpenses
         .filter(e => {
-          const d = new Date(e.fecha);
+          if (!e.fecha) return false;
+          const [, mo] = e.fecha.split('T')[0].split('-').map(Number);
           const okClasif = matchClasif(e);
           const okCat    = filterCategoria === 'Todas' || e.categoria === filterCategoria;
-          return d.getMonth() === idx && okClasif && okCat;
+          return (mo - 1) === idx && okClasif && okCat;
         })
         .reduce((s, e) => s + Number(e.monto || 0), 0);
       return { mes: m, total: gastos, isSelected: idx === selectedMonth };

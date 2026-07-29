@@ -558,10 +558,10 @@ export default function ExpensesModule() {
 
   // Clasificar según la categoría (CAPEX explícito y OPEX por fallback resiliente)
   const capex = expenses.filter(e => capexCategories.includes(e.categoria));
-  const opex = expenses.filter(e => !capexCategories.includes(e.categoria));
+  const opexBase = expenses.filter(e => !capexCategories.includes(e.categoria));
 
   // Distinción y cálculo de Sueldos
-  const sueldosExpenses = opex.filter(e => e.categoria === 'Pago Sueldos' || (e.categoria && e.categoria.toLowerCase().includes('sueldo')));
+  const sueldosExpenses = opexBase.filter(e => e.categoria === 'Pago Sueldos' || (e.categoria && e.categoria.toLowerCase().includes('sueldo')));
   const totalSueldosRegistrados = sueldosExpenses.reduce((sum, e) => sum + Number(e.monto || 0), 0);
 
   const totalSueldosBrutosMechs = (mechanics || []).reduce((sum, m) => {
@@ -574,12 +574,59 @@ export default function ExpensesModule() {
 
   const totalSueldos = totalSueldosBrutosMechs > 0 ? totalSueldosBrutosMechs : totalSueldosRegistrados;
 
+  // Incluir fila de Pago Sueldos en OPEX
+  const opex = React.useMemo(() => {
+    const hasSueldosInMonth = opexBase.some(e => e.categoria === 'Pago Sueldos' || (e.categoria && e.categoria.toLowerCase().includes('sueldo')));
+    if (totalSueldos > 0 && !hasSueldosInMonth) {
+      return [
+        {
+          id: `virtual-sueldos-${selectedYear}-${selectedMonth}`,
+          categoria: 'Pago Sueldos',
+          tipo: 'Fijo',
+          monto: totalSueldos,
+          fecha: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`,
+          aplica_credito_iva: false,
+          isVirtualSueldos: true
+        },
+        ...opexBase
+      ];
+    }
+    return opexBase;
+  }, [opexBase, totalSueldos, selectedYear, selectedMonth]);
+
+  // Incluir Pago Sueldos en el histórico total para el Informe de Egresos
+  const allExpensesWithSueldos = React.useMemo(() => {
+    const list = [...(allExpenses || [])];
+    if (totalSueldos > 0) {
+      for (let m = 0; m < 12; m++) {
+        const hasSueldosInMonth = list.some(e => {
+          if (!e.fecha) return false;
+          const [yr, mo] = e.fecha.split('T')[0].split('-').map(Number);
+          return yr === selectedYear && (mo - 1) === m && (e.categoria === 'Pago Sueldos' || (e.categoria && e.categoria.toLowerCase().includes('sueldo')));
+        });
+
+        if (!hasSueldosInMonth) {
+          list.push({
+            id: `virtual-sueldos-${selectedYear}-${m}`,
+            categoria: 'Pago Sueldos',
+            tipo: 'Fijo',
+            monto: totalSueldos,
+            fecha: `${selectedYear}-${String(m + 1).padStart(2, '0')}-01`,
+            aplica_credito_iva: false,
+            isVirtualSueldos: true
+          });
+        }
+      }
+    }
+    return list;
+  }, [allExpenses, totalSueldos, selectedYear, selectedMonth]);
+
   // Gastos operacionales excluyendo filas de sueldo para no duplicar
-  const opexSinSueldos = opex
+  const opexSinSueldos = opexBase
     .filter(e => e.categoria !== 'Pago Sueldos' && !(e.categoria && e.categoria.toLowerCase().includes('sueldo')))
     .reduce((sum, e) => sum + Number(e.monto || 0), 0);
 
-  const opexFijosSinSueldos = opex
+  const opexFijosSinSueldos = opexBase
     .filter(e => e.tipo === 'Fijo' && e.categoria !== 'Pago Sueldos' && !(e.categoria && e.categoria.toLowerCase().includes('sueldo')))
     .reduce((sum, e) => sum + Number(e.monto || 0), 0);
 
@@ -2563,7 +2610,7 @@ export default function ExpensesModule() {
       {/* CONTENIDO DE PESTAÑA: INFORME */}
       {activeTab === 'informe' && (
         <ExpensesReport
-          allExpenses={allExpenses}
+          allExpenses={allExpensesWithSueldos}
           selectedMonth={selectedMonth}
           selectedYear={selectedYear}
           capexCategories={capexCategories}
@@ -2696,6 +2743,56 @@ export default function ExpensesModule() {
 
   // Renderizar fila de gasto individual
   function renderExpenseRow(exp) {
+    if (exp.isVirtualSueldos) {
+      return (
+        <div 
+          key={exp.id} 
+          className="flex justify-between items-center p-3.5 rounded-xl border bg-blue-50/40 border-blue-200/80 hover:bg-blue-50/70 transition-all duration-200 group"
+        >
+          <div className="flex-1 min-w-0 pr-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-extrabold text-blue-950 text-sm">
+                Pago Sueldos
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setShowSueldosModal(true)}
+                className="bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-300 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 transition-all cursor-pointer shadow-xs active:scale-95"
+                title="Ver a quién pertenece cada sueldo y la cantidad bruta de egreso"
+              >
+                <Users size={11} />
+                Ver Detalle de Sueldos
+              </button>
+
+              <span className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                <Repeat size={10} />
+                Fijo (Nómina Equipo)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 font-semibold">
+              <Calendar size={12} />
+              <span>Nómina Consolidada del Mes</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <p className="font-black text-sm text-blue-900">
+              ${fmt(exp.monto)}
+            </p>
+            <button
+              onClick={() => setShowSueldosModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-extrabold px-3 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer active:scale-95"
+            >
+              <Users size={12} />
+              Ver Detalle
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const isFixed = exp.tipo === 'Fijo';
     const inherited = isInherited(exp);
     const isDeleting = deletingId === exp.id;
