@@ -134,8 +134,10 @@ export default function ExpensesModule() {
   const { data: { expenses, allExpenses, mechanics }, addExpense, deleteExpense, updateExpense, loading } = useNexusRPM();
   const { companyId, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear } = useNexusContext();
   
+  // ── ESTADOS DE LA APLICACIÓN ──
   const [showSueldosModal, setShowSueldosModal] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
   const [clasificacion, setClasificacion] = useState('OPEX'); // 'OPEX' o 'CAPEX'
   const [recurrencia, setRecurrencia] = useState('Variable'); // 'Variable' o 'Fijo'
   const [categoria, setCategoria] = useState('');
@@ -147,33 +149,7 @@ export default function ExpensesModule() {
   const [deletingId, setDeletingId] = useState(null);
   const [toast, setToast] = useState(null);
 
-  // Auto-dismiss toast de notificación
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
-
-  // Pre-poblar fecha por defecto según el período activo (mes y año seleccionado en la cabecera)
-  useEffect(() => {
-    if (showForm && !editingExpense) {
-      const today = new Date();
-      const currentRealMonth = today.getMonth();
-      const currentRealYear = today.getFullYear();
-      let dayStr = String(today.getDate()).padStart(2, '0');
-      
-      // Si el período activo no es el mes actual, usar el día 01 por defecto
-      if (selectedMonth !== currentRealMonth || selectedYear !== currentRealYear) {
-        dayStr = '01';
-      }
-      
-      setFecha(`${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${dayStr}`);
-    }
-  }, [showForm, editingExpense, selectedMonth, selectedYear]);
-
   // Estados para Edición y Registro en Cuotas
-  const [editingExpense, setEditingExpense] = useState(null);
   const [isCuotasEnabled, setIsCuotasEnabled] = useState(false);
   const [numCuotas, setNumCuotas] = useState(3);
   const [tipoCalculoCuotas, setTipoCalculoCuotas] = useState('dividir'); // 'dividir' o 'monto_fijo'
@@ -207,9 +183,11 @@ export default function ExpensesModule() {
     contactoFono: ''
   });
 
-  // Buscadores
+  // Buscadores y filtros interactivos
   const [searchInvoice, setSearchInvoice] = useState('');
   const [payableCardFilter, setPayableCardFilter] = useState('all'); // 'all', 'pending', 'overdue', '7days', '30days'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState('Todos'); // 'Todos', 'Fijo', 'Variable', 'IVA'
 
   // ── Estado del modal de confirmación (reemplaza window.confirm) ──
   const [confirmModal, setConfirmModal] = useState({
@@ -225,7 +203,6 @@ export default function ExpensesModule() {
   };
   const closeConfirm = () => setConfirmModal(prev => ({ ...prev, isOpen: false, onConfirm: null }));
 
-
   // Formulario de creación: Modo Factura
   const [isFacturaProveedor, setIsFacturaProveedor] = useState(false);
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
@@ -238,6 +215,32 @@ export default function ExpensesModule() {
   const [estadoPagoSimple, setEstadoPagoSimple] = useState('Pagado');
   const [fechaVencimientoSimple, setFechaVencimientoSimple] = useState(new Date().toISOString().split('T')[0]);
   const [fechaPagoRealSimple, setFechaPagoRealSimple] = useState(new Date().toISOString().split('T')[0]);
+
+  // ── EFECTOS DE LA APLICACIÓN ──
+  // Auto-dismiss toast de notificación
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  // Pre-poblar fecha por defecto según el período activo (mes y año seleccionado en la cabecera)
+  useEffect(() => {
+    if (showForm && !editingExpense) {
+      const today = new Date();
+      const currentRealMonth = today.getMonth();
+      const currentRealYear = today.getFullYear();
+      let dayStr = String(today.getDate()).padStart(2, '0');
+      
+      // Si el período activo no es el mes actual, usar el día 01 por defecto
+      if (selectedMonth !== currentRealMonth || selectedYear !== currentRealYear) {
+        dayStr = '01';
+      }
+      
+      setFecha(`${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${dayStr}`);
+    }
+  }, [showForm, editingExpense, selectedMonth, selectedYear]);
 
 
   // Helper para sumar días a una fecha
