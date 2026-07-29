@@ -762,6 +762,35 @@ export default function ExpensesModule() {
     .filter(e => e.aplica_credito_iva)
     .reduce((sum, e) => sum + (Number(e.monto) - Number(e.monto) / 1.19), 0);
 
+  // Filtrar listas por búsqueda y por píldora de filtro seleccionada
+  const filterBySearchAndType = (list) => {
+    return list.filter(e => {
+      // 1. Filtrar por tipo / IVA
+      if (filterType === 'Fijo' && e.tipo !== 'Fijo') return false;
+      if (filterType === 'Variable' && e.tipo !== 'Variable') return false;
+      if (filterType === 'IVA' && !e.aplica_credito_iva) return false;
+
+      // 2. Filtrar por campo de búsqueda
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const catMatch = (e.categoria || '').toLowerCase().includes(q);
+        const montoMatch = String(e.monto || '').includes(q);
+        const tipoMatch = (e.tipo || '').toLowerCase().includes(q);
+        
+        const details = expenseDetails[e.id];
+        const supplier = details ? suppliers.find(s => s.id === details.supplierId) : null;
+        const supplierMatch = supplier ? supplier.nombre.toLowerCase().includes(q) : false;
+        const invoiceMatch = details?.numeroFactura ? String(details.numeroFactura).includes(q) : false;
+        
+        return catMatch || montoMatch || tipoMatch || supplierMatch || invoiceMatch;
+      }
+      return true;
+    });
+  };
+
+  const filteredOpexList = useMemo(() => filterBySearchAndType(opexBase), [opexBase, filterType, searchQuery, expenseDetails, suppliers]);
+  const filteredCapexList = useMemo(() => filterBySearchAndType(capex), [capex, filterType, searchQuery, expenseDetails, suppliers]);
+
   // Determinar si el gasto es heredado de un mes anterior
   const isInherited = (exp) => {
     if (!exp.fecha || exp.tipo !== 'Fijo') return false;
