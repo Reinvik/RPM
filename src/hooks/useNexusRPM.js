@@ -102,6 +102,14 @@ export const useNexusRPM = () => {
         let fixedCosts = 0;
         let variableCosts = 0;
 
+        // 1. Determinar si hay sueldos registrados en el mes actual en el listado real de egresos
+        const hasRegisteredSueldos = expenses.some(e => {
+          if (!e.fecha) return false;
+          const [yr, mo] = e.fecha.split('-').map(Number);
+          return yr === currentYear && (mo - 1) === currentMonth && 
+            (e.categoria === 'Pago Sueldos' || (e.categoria && e.categoria.toLowerCase().includes('sueldo')));
+        });
+
         expenses.forEach(exp => {
           if (!exp.fecha) return;
           const [yr, mo] = exp.fecha.split('-').map(Number);
@@ -118,70 +126,103 @@ export const useNexusRPM = () => {
           );
 
           if (isVariableInCurrentMonth || isFixedActive) {
-            if (exp.categoria !== 'Pago Sueldos') {
-              if (exp.tipo === 'Fijo') fixedCosts += Number(exp.monto);
-              if (exp.tipo === 'Variable') variableCosts += Number(exp.monto);
+            const isSueldo = exp.categoria === 'Pago Sueldos' || (exp.categoria && exp.categoria.toLowerCase().includes('sueldo'));
+            if (!isSueldo) {
+              if (exp.tipo === 'Fijo') fixedCosts += Number(exp.monto || 0);
+              if (exp.tipo === 'Variable') variableCosts += Number(exp.monto || 0);
+            } else if (hasRegisteredSueldos) {
+              // Si hay registrados este mes, sumamos sólo los de este mes actual
+              const [expYr, expMo] = exp.fecha.split('-').map(Number);
+              if (expYr === currentYear && (expMo - 1) === currentMonth) {
+                if (exp.tipo === 'Variable') {
+                  variableCosts += Number(exp.monto || 0);
+                } else {
+                  fixedCosts += Number(exp.monto || 0);
+                }
+              }
             }
           }
         });
 
-        // Sumar Sueldos al Punto de Equilibrio (Mes actual)
+        // Sumar Sueldos Proyectados (Líquido) al Punto de Equilibrio (Mes actual) si no están registrados
         const mechs = mechanicsData || [];
-        mechs.forEach(mech => {
-          const isFixed = mech.tipo !== 'Variable'; // Por defecto es Fijo
-          if (isFixed) {
-            fixedCosts += Number(mech.sueldo_base || 0);
-          } else {
-            variableCosts += Number(mech.sueldo_base || 0);
-          }
-          
-          // Buscar tickets de este mes para comisiones
-          const ticketsMes = (ticketSales || []).filter(t => {
-            if (!t.close_date) return false;
-            const cd = new Date(t.close_date);
-            if (cd.getMonth() !== currentMonth || cd.getFullYear() !== currentYear) return false;
-            return t.mechanic === mech.id || (Array.isArray(t.mechanic_ids) && t.mechanic_ids.includes(mech.id)) ||
-                   t.mechanic === mech.name || (Array.isArray(t.mechanic_ids) && t.mechanic_ids.includes(mech.name));
-          });
+        if (!hasRegisteredSueldos) {
+          mechs.forEach(mech => {
+            const isFixed = mech.tipo !== 'Variable'; // Por defecto es Fijo
+            
+            // Sueldo base
+            const sb = Number(mech.sueldo_base || 0);
+            let comisionMO = 0;
+            let comisionIns = 0;
+            
+            // Buscar tickets de este mes para comisiones
+            const ticketsMes = (ticketSales || []).filter(t => {
+              if (!t.close_date) return false;
+              const cd = new Date(t.close_date);
+              if (cd.getMonth() !== currentMonth || cd.getFullYear() !== currentYear) return false;
+              return t.mechanic === mech.id || (Array.isArray(t.mechanic_ids) && t.mechanic_ids.includes(mech.id)) ||
+                     t.mechanic === mech.name || (Array.isArray(t.mechanic_ids) && t.mechanic_ids.includes(mech.name));
+            });
 
-          ticketsMes.forEach(t => {
-            if (t.services && Array.isArray(t.services)) {
-              t.services.forEach(item => {
-                const precio = Number(item.costo || item.price || item.total || 0);
-                const cant = Number(item.cantidad || item.quantity || item.cant || 1);
-                const monto = precio * cant;
-                const isProduct = item.type === 'product';
-                if (!isProduct) {
-                  variableCosts += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
-                } else if (mech.porcentaje_comision_insumos > 0) {
-                  variableCosts += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
-                }
-              });
-            }
-            if (t.spare_parts && Array.isArray(t.spare_parts)) {
-              t.spare_parts.forEach(item => {
-                const precio = Number(item.costo || item.price || item.total || 0);
-                const cant = Number(item.cantidad || item.quantity || item.cant || 1);
-                const monto = precio * cant;
-                
-                let isService = item.type === 'service';
-                if (!item.type) {
-                  const partId = String(item.part_id || '');
-                  const desc = String(item.descripcion || item.description || '');
-                  if (partId.toUpperCase().startsWith('S') || desc.toLowerCase().includes('servicio')) {
-                    isService = true;
+            ticketsMes.forEach(t => {
+              if (t.services && Array.isArray(t.services)) {
+                t.services.forEach(item => {
+                  const precio = Number(item.costo || item.price || item.total || 0);
+                  const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                  const monto = precio * cant;
+                  const isProduct = item.type === 'product';
+                  if (!isProduct) {
+                    comisionMO += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                  } else if (mech.porcentaje_comision_insumos > 0) {
+                    comisionIns += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
                   }
-                }
+                });
+              }
+              if (t.spare_parts && Array.isArray(t.spare_parts)) {
+                t.spare_parts.forEach(item => {
+                  const precio = Number(item.costo || item.price || item.total || 0);
+                  const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                  const monto = precio * cant;
+                  
+                  let isService = item.type === 'service';
+                  if (!item.type) {
+                    const partId = String(item.part_id || '');
+                    const desc = String(item.descripcion || item.description || '');
+                    if (partId.toUpperCase().startsWith('S') || desc.toLowerCase().includes('servicio')) {
+                      isService = true;
+                    }
+                  }
 
-                if (isService) {
-                  variableCosts += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
-                } else if (mech.porcentaje_comision_insumos > 0) {
-                  variableCosts += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
-                }
-              });
+                  if (isService) {
+                    comisionMO += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                  } else if (mech.porcentaje_comision_insumos > 0) {
+                    comisionIns += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
+                  }
+                });
+              }
+            });
+
+            const bonos = Number(mech.bonos || 0);
+            const haberesBrutos = sb + comisionMO + comisionIns + bonos;
+
+            const afp = sb * 0.1145;
+            const fonasa = sb * 0.07;
+            const seguroCesantia = sb * 0.006;
+            const descuentosLegales = afp + fonasa + seguroCesantia;
+
+            const prestamos = Number(mech.prestamos || 0);
+            const descuentosVarios = Number(mech.descuentos || 0);
+            const totalDescuentos = descuentosLegales + prestamos + descuentosVarios;
+
+            const liquidoAPagar = Math.max(0, haberesBrutos - totalDescuentos);
+
+            if (isFixed) {
+              fixedCosts += liquidoAPagar;
+            } else {
+              variableCosts += liquidoAPagar;
             }
           });
-        });
+        }
 
         // Estructura de Flujo de Caja Anual
         const yearlyCashflow = {
@@ -274,62 +315,90 @@ export const useNexusRPM = () => {
         const pagoSueldosAnual = Array(12).fill(0);
         
         for (let m = 0; m < 12; m++) {
-          let totalSueldosMes = 0;
-          
-          mechs.forEach(mech => {
-            // Sueldo base (estimación con valor actual)
-            totalSueldosMes += Number(mech.sueldo_base || 0);
-            
-            // Comisiones del mes m
-            const ticketsMes = (ticketSales || []).filter(t => {
-              if (!t.close_date) return false;
-              const cd = new Date(t.close_date);
-              if (cd.getMonth() !== m || cd.getFullYear() !== currentYear) return false;
-              return t.mechanic === mech.id || (Array.isArray(t.mechanic_ids) && t.mechanic_ids.includes(mech.id)) ||
-                     t.mechanic === mech.name || (Array.isArray(t.mechanic_ids) && t.mechanic_ids.includes(mech.name));
-            });
-
-            ticketsMes.forEach(t => {
-              // MO
-              if (t.services && Array.isArray(t.services)) {
-                t.services.forEach(item => {
-                  const precio = Number(item.costo || item.price || item.total || 0);
-                  const cant = Number(item.cantidad || item.quantity || item.cant || 1);
-                  const monto = precio * cant;
-                  const isProduct = item.type === 'product';
-                  if (!isProduct) {
-                    totalSueldosMes += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
-                  } else if (mech.porcentaje_comision_insumos > 0) {
-                    totalSueldosMes += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
-                  }
-                });
-              }
-              // Insumos
-              if (t.spare_parts && Array.isArray(t.spare_parts)) {
-                t.spare_parts.forEach(item => {
-                  const precio = Number(item.costo || item.price || item.total || 0);
-                  const cant = Number(item.cantidad || item.quantity || item.cant || 1);
-                  const monto = precio * cant;
-                  
-                  let isService = item.type === 'service';
-                  if (!item.type) {
-                    const partId = String(item.part_id || '');
-                    const desc = String(item.descripcion || item.description || '');
-                    if (partId.toUpperCase().startsWith('S') || desc.toLowerCase().includes('servicio')) {
-                      isService = true;
-                    }
-                  }
-
-                  if (isService) {
-                    totalSueldosMes += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
-                  } else if (mech.porcentaje_comision_insumos > 0) {
-                    totalSueldosMes += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
-                  }
-                });
-              }
-            });
+          // Revisar si hay sueldos reales registrados para el mes m en el año actual
+          const realesMesM = expenses.filter(e => {
+            if (!e.fecha) return false;
+            const [yr, mo] = e.fecha.split('-').map(Number);
+            return yr === currentYear && (mo - 1) === m && 
+              (e.categoria === 'Pago Sueldos' || (e.categoria && e.categoria.toLowerCase().includes('sueldo')));
           });
-          pagoSueldosAnual[m] = totalSueldosMes;
+          
+          if (realesMesM.length > 0) {
+            pagoSueldosAnual[m] = realesMesM.reduce((sum, e) => sum + Number(e.monto || 0), 0);
+          } else {
+            // Proyección teórica (Líquido)
+            let totalSueldosMes = 0;
+            
+            mechs.forEach(mech => {
+              const sb = Number(mech.sueldo_base || 0);
+              let comisionMO = 0;
+              let comisionIns = 0;
+              
+              // Buscar tickets del mes m
+              const ticketsMes = (ticketSales || []).filter(t => {
+                if (!t.close_date) return false;
+                const cd = new Date(t.close_date);
+                if (cd.getMonth() !== m || cd.getFullYear() !== currentYear) return false;
+                return t.mechanic === mech.id || (Array.isArray(t.mechanic_ids) && t.mechanic_ids.includes(mech.id)) ||
+                       t.mechanic === mech.name || (Array.isArray(t.mechanic_ids) && t.mechanic_ids.includes(mech.name));
+              });
+
+              ticketsMes.forEach(t => {
+                if (t.services && Array.isArray(t.services)) {
+                  t.services.forEach(item => {
+                    const precio = Number(item.costo || item.price || item.total || 0);
+                    const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                    const monto = precio * cant;
+                    const isProduct = item.type === 'product';
+                    if (!isProduct) {
+                      comisionMO += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                    } else if (mech.porcentaje_comision_insumos > 0) {
+                      comisionIns += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
+                    }
+                  });
+                }
+                if (t.spare_parts && Array.isArray(t.spare_parts)) {
+                  t.spare_parts.forEach(item => {
+                    const precio = Number(item.costo || item.price || item.total || 0);
+                    const cant = Number(item.cantidad || item.quantity || item.cant || 1);
+                    const monto = precio * cant;
+                    
+                    let isService = item.type === 'service';
+                    if (!item.type) {
+                      const partId = String(item.part_id || '');
+                      const desc = String(item.descripcion || item.description || '');
+                      if (partId.toUpperCase().startsWith('S') || desc.toLowerCase().includes('servicio')) {
+                        isService = true;
+                      }
+                    }
+
+                    if (isService) {
+                      comisionMO += (monto * (Number(mech.porcentaje_comision_mo || 0) / 100));
+                    } else if (mech.porcentaje_comision_insumos > 0) {
+                      comisionIns += (monto * (Number(mech.porcentaje_comision_insumos || 0) / 100));
+                    }
+                  });
+                }
+              });
+
+              const bonos = Number(mech.bonos || 0);
+              const haberesBrutos = sb + comisionMO + comisionIns + bonos;
+
+              const afp = sb * 0.1145;
+              const fonasa = sb * 0.07;
+              const seguroCesantia = sb * 0.006;
+              const descuentosLegales = afp + fonasa + seguroCesantia;
+
+              const prestamos = Number(mech.prestamos || 0);
+              const descuentosVarios = Number(mech.descuentos || 0);
+              const totalDescuentos = descuentosLegales + prestamos + descuentosVarios;
+
+              const liquidoAPagar = Math.max(0, haberesBrutos - totalDescuentos);
+              totalSueldosMes += liquidoAPagar;
+            });
+            
+            pagoSueldosAnual[m] = totalSueldosMes;
+          }
         }
         yearlyCashflow.gastos["Pago Sueldos"] = pagoSueldosAnual;
 

@@ -678,7 +678,26 @@ export default function ExpensesModule() {
     return sum + sb + cmo + cins + bonos;
   }, 0);
 
-  const totalSueldos = totalSueldosBrutosMechs > 0 ? totalSueldosBrutosMechs : totalSueldosRegistrados;
+  const totalSueldosLiquidoMechs = (mechanics || []).reduce((sum, m) => {
+    const sb = Number(m.sueldo_base || 0);
+    const cmo = Number(m.mo_generada || 0) * (Number(m.porcentaje_comision_mo || 0) / 100);
+    const cins = Number(m.insumos_generados || 0) * (Number(m.porcentaje_comision_insumos || 0) / 100);
+    const bonos = Number(m.bonos || 0);
+    
+    const haberesBrutos = sb + cmo + cins + bonos;
+    const afp = sb * 0.1145;
+    const fonasa = sb * 0.07;
+    const seguroCesantia = sb * 0.006;
+    const descuentosLegales = afp + fonasa + seguroCesantia;
+    
+    const prestamos = Number(m.prestamos || 0);
+    const descuentosVarios = Number(m.descuentos || 0);
+    const totalDescuentos = descuentosLegales + prestamos + descuentosVarios;
+    
+    return sum + Math.max(0, haberesBrutos - totalDescuentos);
+  }, 0);
+
+  const totalSueldos = totalSueldosRegistrados > 0 ? totalSueldosRegistrados : totalSueldosLiquidoMechs;
 
   // Incluir fila de Pago Sueldos en OPEX
   const opex = React.useMemo(() => {
@@ -762,13 +781,52 @@ export default function ExpensesModule() {
     .filter(e => e.aplica_credito_iva)
     .reduce((sum, e) => sum + (Number(e.monto) - Number(e.monto) / 1.19), 0);
 
+  // Calcular egresos de hoy y esta semana (sobre los gastos del mes seleccionado)
+  const { egresosHoy, egresosSemana } = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    let hoy = 0;
+    let semana = 0;
+    
+    // Sumar tanto OPEX (opexBase) como CAPEX (capex)
+    [...opexBase, ...capex].forEach(e => {
+      if (!e.fecha) return;
+      
+      // Hoy
+      if (e.fecha === todayStr) {
+        hoy += Number(e.monto || 0);
+      }
+      
+      // Últimos 7 días
+      const expDate = new Date(e.fecha + 'T00:00:00');
+      const diffTime = now - expDate;
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      if (diffDays >= 0 && diffDays <= 7) {
+        semana += Number(e.monto || 0);
+      }
+    });
+    
+    return { egresosHoy: hoy, egresosSemana: semana };
+  }, [opexBase, capex]);
+
   // Filtrar listas por búsqueda y por píldora de filtro seleccionada
   const filterBySearchAndType = (list) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+
     return list.filter(e => {
-      // 1. Filtrar por tipo / IVA
+      // 1. Filtrar por tipo / tiempo / IVA
       if (filterType === 'Fijo' && e.tipo !== 'Fijo') return false;
       if (filterType === 'Variable' && e.tipo !== 'Variable') return false;
       if (filterType === 'IVA' && !e.aplica_credito_iva) return false;
+      if (filterType === 'Hoy' && e.fecha !== todayStr) return false;
+      if (filterType === 'Esta Semana') {
+        if (!e.fecha) return false;
+        const expDate = new Date(e.fecha + 'T00:00:00');
+        const diffTime = now - expDate;
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        if (diffDays < 0 || diffDays > 7) return false;
+      }
 
       // 2. Filtrar por campo de búsqueda
       if (searchQuery.trim()) {
@@ -788,12 +846,31 @@ export default function ExpensesModule() {
     });
   };
 
-  const filteredOpexList = useMemo(() => filterBySearchAndType(opexBase), [opexBase, filterType, searchQuery, expenseDetails, suppliers]);
-  const filteredCapexList = useMemo(() => filterBySearchAndType(capex), [capex, filterType, searchQuery, expenseDetails, suppliers]);
+  const filteredOpexList = useMemo(() => {
+    return filterBySearchAndType(opex).sort((a, b) => {
+      // Ordenar por fecha de ingreso (created_at) descendente. Si no existe, usar fecha.
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : new Date(a.fecha + 'T00:00:00').getTime();
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : new Date(b.fecha + 'T00:00:00').getTime();
+      return timeB - timeA;
+    });
+  }, [opex, filterType, searchQuery, expenseDetails, suppliers]);
+
+  const filteredCapexList = useMemo(() => {
+    return filterBySearchAndType(capex).sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : new Date(a.fecha + 'T00:00:00').getTime();
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : new Date(b.fecha + 'T00:00:00').getTime();
+      return timeB - timeA;
+    });
+  }, [capex, filterType, searchQuery, expenseDetails, suppliers]);
 
   // Determinar si el gasto es heredado de un mes anterior
   const isInherited = (exp) => {
     if (!exp.fecha || exp.tipo !== 'Fijo') return false;
+    
+    // Los sueldos nunca se heredan de meses anteriores, son registros mensuales específicos
+    const isSueldo = exp.categoria === 'Pago Sueldos' || (exp.categoria && exp.categoria.toLowerCase().includes('sueldo'));
+    if (isSueldo) return false;
+
     const [yr, mo] = exp.fecha.split('-').map(Number);
     const expYear = yr;
     const expMonth = mo - 1; // 0-indexed
@@ -2314,7 +2391,7 @@ export default function ExpensesModule() {
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-indigo-900 text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5">
                     <Users size={15} className="text-indigo-600" />
-                    Total Sueldos (Bruto)
+                    Total Sueldos (Líquido)
                   </span>
                   <span className="text-[9px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-2xs">
                     Nómina
@@ -2340,11 +2417,12 @@ export default function ExpensesModule() {
               </div>
 
               <div className="flex items-center justify-between mt-4 pt-3 border-t border-indigo-100/90">
-                <div className="text-[10px] text-slate-500 font-bold">
+                <div className="text-[10px] text-slate-500 font-bold space-y-0.5">
+                  <span className="block text-indigo-800">Bruto Est.: ${fmt(totalSueldosBrutosMechs)}</span>
                   {totalSueldosRegistrados > 0 ? (
-                    <span className="block text-indigo-800 font-extrabold">Comprobantes: ${fmt(totalSueldosRegistrados)}</span>
+                    <span className="block text-emerald-700">Comprobantes: ${fmt(totalSueldosRegistrados)}</span>
                   ) : (
-                    <span className="text-slate-400">Calculado de mecánicos</span>
+                    <span className="text-slate-400 block font-medium">Proyección Líquida</span>
                   )}
                 </div>
                 <button
@@ -2444,6 +2522,24 @@ export default function ExpensesModule() {
               </button>
             </div>
 
+            {/* Resumen Diario y Semanal de Egresos */}
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/30 flex flex-wrap gap-4 items-center text-xs font-bold">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1 mr-1">
+                <Repeat size={12} className="text-slate-400" />
+                Resumen de Egresos:
+              </span>
+              <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-100/60 px-3 py-1.5 rounded-xl shadow-3xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Ingresados Hoy:</span>
+                <span className="font-extrabold text-slate-900">${fmt(egresosHoy)}</span>
+              </div>
+              <div className="flex items-center gap-2 bg-blue-50 text-blue-800 border border-blue-100/60 px-3 py-1.5 rounded-xl shadow-3xs">
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                <span>Últimos 7 días:</span>
+                <span className="font-extrabold text-slate-900">${fmt(egresosSemana)}</span>
+              </div>
+            </div>
+
             {/* Barra de Búsqueda y Filtros Visuales */}
             <div className="p-4 border-b border-slate-100 bg-slate-50/70 flex flex-col md:flex-row gap-3 items-center justify-between">
               {/* Buscador de Categoría / Proveedor */}
@@ -2468,17 +2564,17 @@ export default function ExpensesModule() {
                 <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
                   <Filter size={11} /> Filtro:
                 </span>
-                {['Todos', 'Fijo', 'Variable', 'IVA'].map(f => (
+                {['Todos', 'Fijo', 'Variable', 'IVA', 'Hoy', 'Esta Semana'].map(f => (
                   <button
                     key={f}
                     onClick={() => setFilterType(f)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1 ${
                       filterType === f
                         ? 'bg-slate-800 text-white shadow-2xs'
                         : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                     }`}
                   >
-                    {f === 'IVA' ? '✨ Con IVA' : f}
+                    {f === 'IVA' ? '✨ Con IVA' : f === 'Hoy' ? '📅 Hoy' : f === 'Esta Semana' ? '📅 Esta Semana' : f}
                   </button>
                 ))}
                 <span className="text-[11px] font-bold text-slate-400 ml-2">
@@ -3201,15 +3297,13 @@ export default function ExpensesModule() {
           </p>
 
           <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-            {!inherited && (
-              <button
-                onClick={() => handleStartEdit(exp)}
-                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
-                title="Editar egreso"
-              >
-                <Edit2 size={15} />
-              </button>
-            )}
+            <button
+              onClick={() => handleStartEdit(exp)}
+              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+              title="Editar egreso"
+            >
+              <Edit2 size={15} />
+            </button>
             <button
               onClick={() => handleDelete(exp)}
               disabled={isDeleting}
