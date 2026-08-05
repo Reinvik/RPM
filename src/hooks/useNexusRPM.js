@@ -90,7 +90,7 @@ export const useNexusRPM = () => {
           supabase
             .schema('garage')
             .from('garage_tickets')
-            .select('id, cost, close_date, status, mechanic, mechanic_ids, services, spare_parts, document_type')
+            .select('id, cost, close_date, status, mechanic, mechanic_ids, services, spare_parts, document_type, patente')
             .eq('company_id', companyId)
             .in('status', ['Entregado', 'Finalizado'])
         );
@@ -236,12 +236,24 @@ export const useNexusRPM = () => {
         let salesTotal = 0; // Mes actual
         const currentMonthSales = [];
         
-        // Sumar ventas POS
+        // 1. Mapear abonos pagados en POS por patente
+        const abonosByPatente = {};
+        (posSales || []).forEach(sale => {
+          if (sale.notes && sale.notes.toLowerCase().includes('abono')) {
+            const match = sale.notes.match(/patente\s+([A-Za-z0-9]+)/i);
+            if (match) {
+              const pat = match[1].toUpperCase().trim();
+              abonosByPatente[pat] = (abonosByPatente[pat] || 0) + Number(sale.total || 0);
+            }
+          }
+        });
+
+        // 2. Sumar ventas POS (Caja / Ventas en Sala / Abonos recibidos)
         (posSales || []).forEach(sale => {
           if (!sale.sold_at) return;
-          const saleDate = new Date(sale.sold_at);
-          if (saleDate.getFullYear() === currentYear) {
-            const m = saleDate.getMonth();
+          const [yr, mo] = sale.sold_at.split('T')[0].split('-').map(Number);
+          if (yr === currentYear) {
+            const m = mo - 1;
             const val = Number(sale.total || 0);
             if (sale.document_type === 'Factura') yearlyCashflow.ingresos.facturas[m] += val;
             else yearlyCashflow.ingresos.boletas[m] += val; // boletas o nulos
@@ -261,23 +273,46 @@ export const useNexusRPM = () => {
           }
         });
 
-        // Sumar ventas Tickets
+        // Helper para buscar abonos por patente (con tolerancia a pequeñas transposiciones)
+        const findAbonosForPatente = (patenteStr) => {
+          if (!patenteStr) return 0;
+          const cleanPat = patenteStr.toUpperCase().trim();
+          if (abonosByPatente[cleanPat]) return abonosByPatente[cleanPat];
+
+          const sortedPat = cleanPat.split('').sort().join('');
+          for (const key of Object.keys(abonosByPatente)) {
+            if (key.length === cleanPat.length && key.split('').sort().join('') === sortedPat) {
+              return abonosByPatente[key];
+            }
+          }
+          return 0;
+        };
+
+        // 3. Sumar ventas Tickets (Descontando abonos ya cobrados en caja para evitar duplicación)
         (ticketSales || []).forEach(ticket => {
           if (!ticket.close_date) return;
-          const closeDate = new Date(ticket.close_date);
-          if (closeDate.getFullYear() === currentYear) {
-            const m = closeDate.getMonth();
-            const val = Number(ticket.cost || 0);
-            if (ticket.document_type === 'Factura') yearlyCashflow.ingresos.facturas[m] += val;
-            else yearlyCashflow.ingresos.boletas[m] += val;
+          const [yr, mo] = ticket.close_date.split('T')[0].split('-').map(Number);
+          if (yr === currentYear) {
+            const m = mo - 1;
+            const pat = ticket.patente ? ticket.patente.toUpperCase().trim() : '';
+            const totalAbonosTicket = findAbonosForPatente(pat);
+            const totalCost = Number(ticket.cost || 0);
+            
+            // El saldo real liquidado al entregar el ticket es costo_total - abonos_cobrados
+            const netTicketIncome = Math.max(0, totalCost - totalAbonosTicket);
+
+            if (ticket.document_type === 'Factura') yearlyCashflow.ingresos.facturas[m] += netTicketIncome;
+            else yearlyCashflow.ingresos.boletas[m] += netTicketIncome;
             
             if (m === currentMonth) {
-              salesTotal += val;
+              salesTotal += netTicketIncome;
               currentMonthSales.push({
                 id: ticket.id,
                 type: 'Servicio Taller',
                 document_type: ticket.document_type || 'Boleta',
-                total: val,
+                total: netTicketIncome,
+                original_cost: totalCost,
+                abono_deducted: totalAbonosTicket,
                 fecha: ticket.close_date.split('T')[0]
               });
             }
@@ -482,9 +517,35 @@ export const useNexusRPM = () => {
           };
         });
 
-        const filteredExpenses = expenses.filter(exp => {
+        // Construir allExpenses incluyendo Pago Sueldos para cada mes del año
+        const allExpensesWithSueldos = [...(expensesData || [])];
+        for (let m = 0; m < 12; m++) {
+          const totalSueldosMes = pagoSueldosAnual[m];
+          if (totalSueldosMes > 0) {
+            const hasSueldosInMonth = allExpensesWithSueldos.some(e => {
+              if (!e.fecha) return false;
+              const [yr, mo] = e.fecha.split('T')[0].split('-').map(Number);
+              return yr === currentYear && (mo - 1) === m && (e.categoria === 'Pago Sueldos' || (e.categoria && e.categoria.toLowerCase().includes('sueldo')));
+            });
+
+            if (!hasSueldosInMonth) {
+              allExpensesWithSueldos.push({
+                id: `virtual-sueldos-${currentYear}-${m}`,
+                company_id: companyId,
+                categoria: 'Pago Sueldos',
+                tipo: 'Fijo',
+                monto: totalSueldosMes,
+                fecha: `${currentYear}-${String(m + 1).padStart(2, '0')}-01`,
+                aplica_credito_iva: false,
+                isVirtualSueldos: true
+              });
+            }
+          }
+        }
+
+        const filteredExpenses = allExpensesWithSueldos.filter(exp => {
           if (!exp.fecha) return false;
-          const [yr, mo] = exp.fecha.split('-').map(Number);
+          const [yr, mo] = exp.fecha.split('T')[0].split('-').map(Number);
           const expYear = yr;
           const expMonth = mo - 1;
 
@@ -494,7 +555,7 @@ export const useNexusRPM = () => {
             
           const isFixedActive = exp.tipo === 'Fijo' && (
             expYear < currentYear || 
-            (expYear === currentYear && expMonth <= currentMonth)
+            (expYear === currentYear && expMonth === currentMonth)
           );
 
           return isVariableInCurrentMonth || isFixedActive;
@@ -505,7 +566,7 @@ export const useNexusRPM = () => {
           fixedCosts,
           variableCosts,
           expenses: filteredExpenses,
-          allExpenses: expensesData || [],
+          allExpenses: allExpensesWithSueldos,
           mechanics,
           sales: currentMonthSales,
           yearlyCashflow

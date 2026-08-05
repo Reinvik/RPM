@@ -15,7 +15,8 @@ import {
   BarChart3,
   AlertCircle,
   ChevronRight,
-  X
+  X,
+  Users
 } from 'lucide-react';
 import { useNexusContext } from '../../context/NexusContext';
 import { useNexusRPM } from '../../hooks/useNexusRPM';
@@ -183,6 +184,18 @@ export default function NexusRPMDashboard() {
       .filter(e => isRepuestoCategory(e.categoria))
       .reduce((sum, e) => sum + Number(e.monto || 0), 0);
   }, [expenses]);
+
+  // Cálculo de Nómina de Sueldos para el desglose en el Dashboard principal
+  const sueldosExpenses = (expenses || []).filter(e => e.categoria === 'Pago Sueldos' || (e.categoria && e.categoria.toLowerCase().includes('sueldo')));
+  const totalSueldosRegistrados = sueldosExpenses.reduce((sum, e) => sum + Number(e.monto || 0), 0);
+  const totalSueldosBrutosMechs = (mechanics || []).reduce((sum, m) => {
+    const sb = Number(m.sueldo_base || 0);
+    const cmo = Number(m.mo_generada || 0) * (Number(m.porcentaje_comision_mo || 0) / 100);
+    const cins = Number(m.insumos_generados || 0) * (Number(m.porcentaje_comision_insumos || 0) / 100);
+    const bonos = Number(m.bonos || 0);
+    return sum + sb + cmo + cins + bonos;
+  }, 0);
+  const totalSueldos = totalSueldosRegistrados > 0 ? totalSueldosRegistrados : totalSueldosBrutosMechs;
 
   // Cifras Netas (excluyendo repuestos e insumos directos)
   const netSales       = Math.max(0, salesTotal - costoRepuestos);
@@ -484,12 +497,19 @@ export default function NexusRPMDashboard() {
           )}
 
           {/* Mini desglose de costos */}
-          <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-3 text-[11px]">
-            <div className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg">
-              <span className="text-slate-500 font-medium">Costos Fijos</span>
-              <span className="font-bold text-slate-800">${fmt(fixedCosts)}</span>
+          <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+            <div className="flex justify-between items-center bg-slate-50 px-3 py-2.5 rounded-lg border border-slate-150">
+              <span className="text-slate-500 font-medium">Costos Fijos Op.</span>
+              <span className="font-bold text-slate-800">${fmt(Math.max(0, fixedCosts - (totalSueldos > 0 ? totalSueldos : 0)))}</span>
             </div>
-            <div className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-lg">
+            <div className="flex justify-between items-center bg-blue-50/70 px-3 py-2.5 rounded-lg border border-blue-200">
+              <span className="text-blue-700 font-extrabold flex items-center gap-1">
+                <Users size={12} />
+                Nómina Sueldos
+              </span>
+              <span className="font-black text-blue-950">${fmt(totalSueldos)}</span>
+            </div>
+            <div className="flex justify-between items-center bg-slate-50 px-3 py-2.5 rounded-lg border border-slate-150">
               <span className="text-slate-500 font-medium">Costos Variables*</span>
               <span className="font-bold text-slate-800">${fmt(netVariableCosts)}</span>
             </div>
@@ -897,8 +917,14 @@ export default function NexusRPMDashboard() {
                                   {s.type}
                                 </span>
                               </td>
-                              <td className="py-2.5 px-4 text-slate-550 font-semibold">{s.document_type}</td>
-                              <td className="py-2.5 px-4 text-right font-black text-slate-800">${fmt(s.total)}</td>
+                              <td className="py-2.5 px-4 text-right">
+                                <span className="font-black text-slate-800 block">${fmt(s.total)}</span>
+                                {s.abono_deducted > 0 && (
+                                  <span className="text-[9px] text-blue-600 font-semibold block">
+                                    (Bruto: ${fmt(s.original_cost)} - ${fmt(s.abono_deducted)} abono)
+                                  </span>
+                                )}
+                              </td>
                             </tr>
                           ))
                         }
