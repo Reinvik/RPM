@@ -216,10 +216,11 @@ export const useNexusRPM = () => {
 
             const liquidoAPagar = Math.max(0, haberesBrutos - totalDescuentos);
 
+            // El gasto operativo real de nómina para la empresa es el Sueldo Bruto (haberesBrutos)
             if (isFixed) {
-              fixedCosts += liquidoAPagar;
+              fixedCosts += haberesBrutos;
             } else {
-              variableCosts += liquidoAPagar;
+              variableCosts += haberesBrutos;
             }
           });
         }
@@ -429,7 +430,7 @@ export const useNexusRPM = () => {
               const totalDescuentos = descuentosLegales + prestamos + descuentosVarios;
 
               const liquidoAPagar = Math.max(0, haberesBrutos - totalDescuentos);
-              totalSueldosMes += liquidoAPagar;
+              totalSueldosMes += haberesBrutos;
             });
             
             pagoSueldosAnual[m] = totalSueldosMes;

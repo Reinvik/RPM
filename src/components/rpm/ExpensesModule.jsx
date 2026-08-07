@@ -509,6 +509,15 @@ export default function ExpensesModule() {
       if (exp.tipo !== 'Fijo') return;
       if (facturasAgregadasIds.has(exp.id)) return;
 
+      // Si es un egreso virtual de sueldos o registro mensual de sueldo, filtrar estrictamente al mes activo
+      if (exp.isVirtualSueldos || exp.categoria === 'Pago Sueldos' || (exp.categoria && exp.categoria.toLowerCase().includes('sueldo'))) {
+        if (!exp.fecha) return;
+        const [expYr, expMo] = exp.fecha.split('T')[0].split('-').map(Number);
+        if (expYr !== selectedYear || (expMo - 1) !== selectedMonth) {
+          return;
+        }
+      }
+
       const detail = expenseDetails[exp.id];
       
       // Obtener día de vencimiento por defecto desde la fecha original de registro
