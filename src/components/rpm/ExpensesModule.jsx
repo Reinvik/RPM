@@ -474,8 +474,14 @@ export default function ExpensesModule() {
   }, [opexCategories, capexCategories, allExpenses]);
 
   // --- useMemo DE CUENTAS POR PAGAR Y PROVEEDORES ---
+  const parseYearMonthDay = (dateStr) => {
+    if (!dateStr) return null;
+    const parts = String(dateStr).split('T')[0].split('-').map(Number);
+    if (parts.length < 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) return null;
+    return { year: parts[0], month: parts[1] - 1, day: parts[2] };
+  };
+
   const invoices = React.useMemo(() => {
-    const hoyStr = new Date().toISOString().split('T')[0];
     const list = [];
     const expensesList = allExpenses || [];
     
@@ -488,41 +494,52 @@ export default function ExpensesModule() {
       if (detail && detail.numeroFactura) {
         facturasAgregadasIds.add(exp.id);
         const supplier = suppliers.find(s => s.id === detail.supplierId);
-        list.push({
-          ...exp,
-          detail,
-          tipoEntrada: 'factura',
-          supplierName: supplier ? supplier.nombre : 'Proveedor Desconocido',
-          supplierRut: supplier ? supplier.rut : '',
-          numeroFactura: detail.numeroFactura,
-          fechaVencimiento: detail.fechaVencimiento,
-          estadoPago: detail.estadoPago || 'Pendiente',
-          fechaPagoReal: detail.fechaPagoReal
-        });
+        
+        const estado = detail.estadoPago || 'Pendiente';
+        const vencimiento = detail.fechaVencimiento || exp.fecha;
+        const pagoReal = detail.fechaPagoReal || null;
+
+        const pExp = parseYearMonthDay(exp.fecha);
+        const pPago = parseYearMonthDay(pagoReal);
+        const pVenc = parseYearMonthDay(vencimiento);
+
+        const esMesActivo = pExp && pExp.year === selectedYear && pExp.month === selectedMonth;
+        const esMesPagoActivo = pPago && pPago.year === selectedYear && pPago.month === selectedMonth;
+        const esMesVencActivo = pVenc && pVenc.year === selectedYear && pVenc.month === selectedMonth;
+
+        if (estado === 'Pendiente' || esMesActivo || esMesPagoActivo || esMesVencActivo) {
+          list.push({
+            ...exp,
+            detail,
+            tipoEntrada: 'factura',
+            supplierName: supplier ? supplier.nombre : (exp.categoria || 'Proveedor Desconocido'),
+            supplierRut: supplier ? supplier.rut : '',
+            numeroFactura: detail.numeroFactura,
+            fechaVencimiento: vencimiento,
+            estadoPago: estado,
+            fechaPagoReal: pagoReal
+          });
+        }
       }
     });
 
     // 2. Gastos Fijos (del mes activo selectedYear-selectedMonth)
-    // Se listan todos los gastos fijos. Si no tienen diaVencimiento configurado,
-    // se toma por defecto el día de su fecha original de registro.
     expensesList.forEach(exp => {
       if (exp.tipo !== 'Fijo') return;
       if (facturasAgregadasIds.has(exp.id)) return;
 
+      const pExp = parseYearMonthDay(exp.fecha);
+      if (!pExp) return;
+
       // Si es un egreso virtual de sueldos o registro mensual de sueldo, filtrar estrictamente al mes activo
       if (exp.isVirtualSueldos || exp.categoria === 'Pago Sueldos' || (exp.categoria && exp.categoria.toLowerCase().includes('sueldo'))) {
-        if (!exp.fecha) return;
-        const [expYr, expMo] = exp.fecha.split('T')[0].split('-').map(Number);
-        if (expYr !== selectedYear || (expMo - 1) !== selectedMonth) {
+        if (pExp.year !== selectedYear || pExp.month !== selectedMonth) {
           return;
         }
       }
 
       const detail = expenseDetails[exp.id];
-      
-      // Obtener día de vencimiento por defecto desde la fecha original de registro
-      const expDate = new Date(exp.fecha + 'T00:00:00');
-      let dia = expDate.getDate();
+      let dia = pExp.day;
       if (detail && detail.diaVencimiento) {
         dia = Number(detail.diaVencimiento);
       }
@@ -542,7 +559,7 @@ export default function ExpensesModule() {
         tipoEntrada: 'fijo',
         supplierName: exp.categoria,
         supplierRut: '',
-        numeroFactura: `Fijo-${exp.id.slice(-4)}`,
+        numeroFactura: `Fijo-${String(exp.id).slice(-4)}`,
         fechaVencimiento: fechaVenc,
         estadoPago: estado,
         fechaPagoReal: pagoReal,
@@ -550,9 +567,9 @@ export default function ExpensesModule() {
       });
     });
 
-    // 3. Gastos Variables Simples (que no son facturas)
+    // 3. Gastos Variables / Simples (que no son facturas)
     expensesList.forEach(exp => {
-      if (exp.tipo !== 'Variable') return;
+      if (exp.tipo === 'Fijo') return;
       if (facturasAgregadasIds.has(exp.id)) return;
 
       const detail = expenseDetails[exp.id];
@@ -560,15 +577,15 @@ export default function ExpensesModule() {
       const vencimiento = detail?.fechaVencimiento || exp.fecha;
       const pagoReal = estado === 'Pagado' ? (detail?.fechaPagoReal || exp.fecha) : null;
 
-      // Mostrar el gasto variable en Cuentas por Pagar si:
-      // - Está Pendiente de pago.
-      // - Si está Pagado, solo si su fecha de registro o pago real cae en el mes activo.
-      const expDate = new Date(exp.fecha + 'T00:00:00');
-      const esMesActivo = expDate.getFullYear() === selectedYear && expDate.getMonth() === selectedMonth;
-      const pagoRealDate = pagoReal ? new Date(pagoReal + 'T00:00:00') : null;
-      const esMesPagoActivo = pagoRealDate && pagoRealDate.getFullYear() === selectedYear && pagoRealDate.getMonth() === selectedMonth;
+      const pExp = parseYearMonthDay(exp.fecha);
+      const pPago = parseYearMonthDay(pagoReal);
+      const pVenc = parseYearMonthDay(vencimiento);
 
-      if (estado === 'Pendiente' || esMesActivo || esMesPagoActivo) {
+      const esMesActivo = pExp && pExp.year === selectedYear && pExp.month === selectedMonth;
+      const esMesPagoActivo = pPago && pPago.year === selectedYear && pPago.month === selectedMonth;
+      const esMesVencActivo = pVenc && pVenc.year === selectedYear && pVenc.month === selectedMonth;
+
+      if (estado === 'Pendiente' || esMesActivo || esMesPagoActivo || esMesVencActivo) {
         list.push({
           ...exp,
           detail: detail || {},
@@ -584,7 +601,7 @@ export default function ExpensesModule() {
       }
     });
 
-    return list.sort((a, b) => new Date(a.fechaVencimiento) - new Date(b.fechaVencimiento));
+    return list.sort((a, b) => new Date(a.fechaVencimiento + 'T00:00:00') - new Date(b.fechaVencimiento + 'T00:00:00'));
   }, [allExpenses, expenseDetails, suppliers, selectedMonth, selectedYear]);
 
   const filteredInvoices = React.useMemo(() => {
