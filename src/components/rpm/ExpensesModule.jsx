@@ -507,7 +507,7 @@ export default function ExpensesModule() {
         const esMesPagoActivo = pPago && pPago.year === selectedYear && pPago.month === selectedMonth;
         const esMesVencActivo = pVenc && pVenc.year === selectedYear && pVenc.month === selectedMonth;
 
-        if (estado === 'Pendiente' || esMesActivo || esMesPagoActivo || esMesVencActivo) {
+        if (esMesActivo || esMesPagoActivo || esMesVencActivo) {
           list.push({
             ...exp,
             detail,
@@ -530,6 +530,10 @@ export default function ExpensesModule() {
 
       const pExp = parseYearMonthDay(exp.fecha);
       if (!pExp) return;
+
+      // El gasto fijo debe haber sido registrado en o antes del mes activo
+      const isBeforeOrEqual = pExp.year < selectedYear || (pExp.year === selectedYear && pExp.month <= selectedMonth);
+      if (!isBeforeOrEqual) return;
 
       // Si es un egreso virtual de sueldos o registro mensual de sueldo, filtrar estrictamente al mes activo
       if (exp.isVirtualSueldos || exp.categoria === 'Pago Sueldos' || (exp.categoria && exp.categoria.toLowerCase().includes('sueldo'))) {
@@ -579,13 +583,11 @@ export default function ExpensesModule() {
 
       const pExp = parseYearMonthDay(exp.fecha);
       const pPago = parseYearMonthDay(pagoReal);
-      const pVenc = parseYearMonthDay(vencimiento);
 
       const esMesActivo = pExp && pExp.year === selectedYear && pExp.month === selectedMonth;
       const esMesPagoActivo = pPago && pPago.year === selectedYear && pPago.month === selectedMonth;
-      const esMesVencActivo = pVenc && pVenc.year === selectedYear && pVenc.month === selectedMonth;
 
-      if (estado === 'Pendiente' || esMesActivo || esMesPagoActivo || esMesVencActivo) {
+      if (esMesActivo || esMesPagoActivo) {
         list.push({
           ...exp,
           detail: detail || {},
