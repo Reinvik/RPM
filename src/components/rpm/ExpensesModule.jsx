@@ -38,6 +38,7 @@ import { useNexusContext } from '../../context/NexusContext';
 import ConfirmModal from './ConfirmModal';
 import ExpensesReport from './ExpensesReport';
 import SueldosDetailModal from './SueldosDetailModal';
+import DailyClosureTab from './DailyClosureTab';
 
 const getCategoryVisuals = (categoriaName) => {
   const cat = (categoriaName || '').toLowerCase();
@@ -2336,6 +2337,17 @@ export default function ExpensesModule() {
           <BarChart3 size={15} />
           Informe
         </button>
+        <button
+          onClick={() => setActiveTab('cierre')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${
+            activeTab === 'cierre'
+              ? 'bg-white text-emerald-700 shadow-sm border border-emerald-200/50'
+              : 'text-slate-500 hover:text-slate-850'
+          }`}
+        >
+          <Clock size={15} />
+          Cierre Diario
+        </button>
       </div>
 
       {/* CONTENIDO DE PESTAÑA: GASTOS DEL PERIODO */}
@@ -3029,6 +3041,11 @@ export default function ExpensesModule() {
           isUpdating={updatingCategoryId === 'merge-all'}
           onOpenSueldosModal={() => setShowSueldosModal(true)}
         />
+      )}
+
+      {/* CONTENIDO DE PESTAÑA: CIERRE DIARIO */}
+      {activeTab === 'cierre' && (
+        <DailyClosureTab />
       )}
 
       {/* Modal de Proveedor (Creación / Edición) */}
