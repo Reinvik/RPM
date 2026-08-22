@@ -106,9 +106,9 @@ export default function DailyClosureTab({ expenseDetails: propExpenseDetails }) 
       if (e.isVirtualSueldos) return false;
 
       const detail = activeExpenseDetails[e.id];
-      const estado = detail?.estadoPago || 'Pagado';
-      const fechaPagoReal = detail?.fechaPagoReal || (estado === 'Pagado' ? e.fecha : null);
-      const fechaVencimiento = detail?.fechaVencimiento || e.fecha;
+      const estado = e.estado || detail?.estadoPago || 'Pagado';
+      const fechaPagoReal = e.fecha_pago_real || detail?.fechaPagoReal || (estado === 'Pagado' ? e.fecha : null);
+      const fechaVencimiento = e.fecha_vencimiento || detail?.fechaVencimiento || e.fecha;
 
       const cleanRegFecha = e.fecha ? String(e.fecha).split('T')[0] : null;
       const cleanPagoFecha = fechaPagoReal ? String(fechaPagoReal).split('T')[0] : null;
@@ -121,9 +121,9 @@ export default function DailyClosureTab({ expenseDetails: propExpenseDetails }) 
       return fuePagadoHoy || fueRegistradoHoy || venceHoy;
     }).map(e => {
       const detail = activeExpenseDetails[e.id];
-      const estado = detail?.estadoPago || 'Pagado';
-      const fechaPagoReal = detail?.fechaPagoReal || (estado === 'Pagado' ? e.fecha : null);
-      const numeroFactura = detail?.numeroFactura || null;
+      const estado = e.estado || detail?.estadoPago || 'Pagado';
+      const fechaPagoReal = e.fecha_pago_real || detail?.fechaPagoReal || (estado === 'Pagado' ? e.fecha : null);
+      const numeroFactura = e.numero_factura || detail?.numeroFactura || null;
       return {
         ...e,
         estadoPago: estado,

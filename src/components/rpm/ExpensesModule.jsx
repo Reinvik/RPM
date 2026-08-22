@@ -1218,20 +1218,26 @@ export default function ExpensesModule() {
       confirmText: 'Sí, registrar pago',
       onConfirm: async () => {
         const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+        const todayStr = new Date().toISOString().split('T')[0];
         let updatedDetail;
         if (esFijo) {
           // Para gastos fijos: registrar por mes
           updatedDetail = {
             ...detail,
             estadoPago: { ...(detail.estadoPago || {}), [mesKey]: 'Pagado' },
-            fechaPagoReal: { ...(detail.fechaPagoReal || {}), [mesKey]: new Date().toISOString().split('T')[0] }
+            fechaPagoReal: { ...(detail.fechaPagoReal || {}), [mesKey]: todayStr }
           };
         } else {
           updatedDetail = {
             ...detail,
             estadoPago: 'Pagado',
-            fechaPagoReal: new Date().toISOString().split('T')[0]
+            fechaPagoReal: todayStr
           };
+          try {
+            await updateExpense(expId, { estado: 'Pagado', fecha_pago_real: todayStr });
+          } catch (err) {
+            console.error("Error al persistir pago en DB:", err);
+          }
         }
         const updatedDetails = { ...expenseDetails, [expId]: updatedDetail };
         setExpenseDetails(updatedDetails);
