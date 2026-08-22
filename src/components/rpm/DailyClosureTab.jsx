@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Calendar, 
   ChevronLeft, 
@@ -20,9 +20,9 @@ import { useNexusContext } from '../../context/NexusContext';
 
 const fmt = (num) => Math.round(Number(num) || 0).toLocaleString('es-CL');
 
-export default function DailyClosureTab() {
+export default function DailyClosureTab({ expenseDetails: propExpenseDetails }) {
   const { data: { sales, allExpenses }, loading } = useNexusRPM();
-  const { selectedMonth, setSelectedMonth, selectedYear, setSelectedYear } = useNexusContext();
+  const { companyId, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear } = useNexusContext();
 
   // Fecha seleccionada (por defecto la fecha actual de hoy en YYYY-MM-DD local)
   const todayStr = useMemo(() => {
@@ -34,6 +34,21 @@ export default function DailyClosureTab() {
   }, []);
 
   const [selectedDailyDate, setSelectedDailyDate] = useState(todayStr);
+
+  // Cargar metadatos de egresos (detalles de facturas, estado de pago y fecha de pago real)
+  const activeExpenseDetails = useMemo(() => {
+    if (propExpenseDetails && Object.keys(propExpenseDetails).length > 0) {
+      return propExpenseDetails;
+    }
+    if (!companyId) return {};
+    const detailsKey = `nexus_rpm_expense_details_${companyId}`;
+    try {
+      return JSON.parse(localStorage.getItem(detailsKey) || '{}');
+    } catch (err) {
+      console.error("Error al cargar detalles de egresos:", err);
+      return {};
+    }
+  }, [propExpenseDetails, companyId]);
 
   // Manejar cambio de fecha y sincronizar con el mes/año del contexto si es necesario
   const handleDateChange = (newDateStr) => {
@@ -81,15 +96,42 @@ export default function DailyClosureTab() {
   const totalPosDay = useMemo(() => posSalesDay.reduce((sum, s) => sum + Number(s.total || 0), 0), [posSalesDay]);
   const totalTallerDay = useMemo(() => tallerSalesDay.reduce((sum, s) => sum + Number(s.total || 0), 0), [tallerSalesDay]);
 
-  // 2. Egresos del día seleccionado (excluyendo sueldos virtuales)
+  // 2. Egresos del día seleccionado
+  // Incluye:
+  // - Egresos pagados cuya fecha de pago real es el día seleccionado (ej: marcados como pagados hoy)
+  // - Egresos cuyo registro fue creado en el día seleccionado
+  // - Egresos pendientes cuya fecha de vencimiento cae en el día seleccionado
   const dayExpenses = useMemo(() => {
     return (allExpenses || []).filter(e => {
       if (e.isVirtualSueldos) return false;
-      if (!e.fecha) return false;
-      const cleanFecha = e.fecha.split('T')[0];
-      return cleanFecha === selectedDailyDate;
+
+      const detail = activeExpenseDetails[e.id];
+      const estado = detail?.estadoPago || 'Pagado';
+      const fechaPagoReal = detail?.fechaPagoReal || (estado === 'Pagado' ? e.fecha : null);
+      const fechaVencimiento = detail?.fechaVencimiento || e.fecha;
+
+      const cleanRegFecha = e.fecha ? String(e.fecha).split('T')[0] : null;
+      const cleanPagoFecha = fechaPagoReal ? String(fechaPagoReal).split('T')[0] : null;
+      const cleanVencFecha = fechaVencimiento ? String(fechaVencimiento).split('T')[0] : null;
+
+      const fuePagadoHoy = estado === 'Pagado' && cleanPagoFecha === selectedDailyDate;
+      const fueRegistradoHoy = cleanRegFecha === selectedDailyDate;
+      const venceHoy = estado === 'Pendiente' && cleanVencFecha === selectedDailyDate;
+
+      return fuePagadoHoy || fueRegistradoHoy || venceHoy;
+    }).map(e => {
+      const detail = activeExpenseDetails[e.id];
+      const estado = detail?.estadoPago || 'Pagado';
+      const fechaPagoReal = detail?.fechaPagoReal || (estado === 'Pagado' ? e.fecha : null);
+      const numeroFactura = detail?.numeroFactura || null;
+      return {
+        ...e,
+        estadoPago: estado,
+        fechaPagoReal,
+        numeroFactura
+      };
     });
-  }, [allExpenses, selectedDailyDate]);
+  }, [allExpenses, activeExpenseDetails, selectedDailyDate]);
 
   const totalDayExpenses = useMemo(() => {
     return dayExpenses.reduce((sum, e) => sum + Number(e.monto || 0), 0);
@@ -202,7 +244,7 @@ export default function DailyClosureTab() {
           <div className="flex justify-between items-start mb-3">
             <div>
               <span className="text-slate-400 text-[10px] font-extrabold uppercase tracking-wider block">Egresos y Compras del Día</span>
-              <span className="text-xs text-slate-400 font-semibold">{dayExpenses.length} compras / gastos</span>
+              <span className="text-xs text-slate-400 font-semibold">{dayExpenses.length} compras / egresos</span>
             </div>
             <span className="p-2 bg-rose-50 rounded-xl">
               <ArrowDownRight className="text-rose-600" size={18} />
@@ -210,7 +252,7 @@ export default function DailyClosureTab() {
           </div>
           <div className="text-3xl font-black text-slate-900 tracking-tight">${fmt(totalDayExpenses)}</div>
           <div className="mt-4 pt-3 border-t border-slate-100 text-[10px] text-slate-400 font-medium">
-            Suma total de facturas y boletas registradas en esta fecha.
+            Suma de facturas y egresos pagados o ingresados en esta fecha.
           </div>
         </div>
 
@@ -324,7 +366,7 @@ export default function DailyClosureTab() {
                 <thead>
                   <tr className="border-b border-slate-150 text-slate-400 font-extrabold uppercase tracking-wider text-[9px]">
                     <th className="py-2.5 px-3">Categoría / Concepto</th>
-                    <th className="py-2.5 px-3">Tipo</th>
+                    <th className="py-2.5 px-3">Estado / Tipo</th>
                     <th className="py-2.5 px-3 text-right">Monto</th>
                   </tr>
                 </thead>
@@ -332,18 +374,25 @@ export default function DailyClosureTab() {
                   {dayExpenses.map((exp) => (
                     <tr key={exp.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3 px-3">
-                        <span className="font-bold text-slate-800 block">{exp.categoria}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-800 block">{exp.categoria}</span>
+                          {exp.numeroFactura && (
+                            <span className="text-[9px] font-mono bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-200">
+                              Fact. {exp.numeroFactura}
+                            </span>
+                          )}
+                        </div>
                         {exp.descripcion && (
                           <span className="text-[10px] text-slate-400 font-normal block">{exp.descripcion}</span>
                         )}
                       </td>
                       <td className="py-3 px-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold ${
-                          exp.tipo === 'Fijo' 
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold inline-block ${
+                          exp.estadoPago === 'Pagado'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}>
-                          {exp.tipo || 'Variable'}
+                          {exp.estadoPago || 'Pagado'} ({exp.tipo || 'Variable'})
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right font-black text-slate-900">${fmt(exp.monto)}</td>

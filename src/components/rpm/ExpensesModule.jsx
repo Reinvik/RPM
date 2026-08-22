@@ -3045,7 +3045,7 @@ export default function ExpensesModule() {
 
       {/* CONTENIDO DE PESTAÑA: CIERRE DIARIO */}
       {activeTab === 'cierre' && (
-        <DailyClosureTab />
+        <DailyClosureTab expenseDetails={expenseDetails} />
       )}
 
       {/* Modal de Proveedor (Creación / Edición) */}
