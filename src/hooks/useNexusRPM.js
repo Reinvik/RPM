@@ -81,7 +81,7 @@ export const useNexusRPM = () => {
           supabase
             .schema('garage')
             .from('garage_sala_ventas')
-            .select('total, sold_at, document_type, notes')
+            .select('id, total, sold_at, document_type, notes, payment_method, cash_amount, card_amount, transfer_amount')
             .eq('company_id', companyId)
         );
 
@@ -90,12 +90,21 @@ export const useNexusRPM = () => {
           supabase
             .schema('garage')
             .from('garage_tickets')
-            .select('id, cost, close_date, status, mechanic, mechanic_ids, services, spare_parts, document_type, patente')
+            .select('id, cost, close_date, status, mechanic, mechanic_ids, services, spare_parts, document_type, patente, payment_method, cash_amount, card_amount, transfer_amount')
             .eq('company_id', companyId)
             .in('status', ['Entregado', 'Finalizado'])
         );
 
-        console.log(`[useNexusRPM] POS: ${posSales.length} registros | Tickets: ${ticketSales.length} registros`);
+        // 5. Obtener ingresos financieros / inyecciones de caja (financial_incomes)
+        const { data: incomesData, error: incError } = await supabase
+          .schema('garage')
+          .from('financial_incomes')
+          .select('*')
+          .eq('company_id', companyId);
+
+        if (incError) console.error("Error fetching financial incomes:", incError);
+
+        console.log(`[useNexusRPM] POS: ${posSales.length} registros | Tickets: ${ticketSales.length} registros | Incomes: ${(incomesData || []).length}`);
 
         // Procesar datos para RPM (Mes actual)
         const expenses = expensesData || [];
@@ -267,8 +276,13 @@ export const useNexusRPM = () => {
                 id: sale.id || `pos-${sale.sold_at}-${val}`,
                 type: isAbono ? 'Abono' : 'Sala de Ventas',
                 document_type: sale.document_type || 'Boleta',
+                payment_method: sale.payment_method || 'Efectivo',
+                cash_amount: Number(sale.cash_amount || 0),
+                card_amount: Number(sale.card_amount || 0),
+                transfer_amount: Number(sale.transfer_amount || 0),
                 total: val,
-                fecha: sale.sold_at.split('T')[0]
+                fecha: sale.sold_at.split('T')[0],
+                notes: sale.notes
               });
             }
           }
@@ -311,10 +325,45 @@ export const useNexusRPM = () => {
                 id: ticket.id,
                 type: 'Servicio Taller',
                 document_type: ticket.document_type || 'Boleta',
+                payment_method: ticket.payment_method || 'Efectivo',
+                cash_amount: Number(ticket.cash_amount || 0),
+                card_amount: Number(ticket.card_amount || 0),
+                transfer_amount: Number(ticket.transfer_amount || 0),
                 total: netTicketIncome,
                 original_cost: totalCost,
                 abono_deducted: totalAbonosTicket,
-                fecha: ticket.close_date.split('T')[0]
+                fecha: ticket.close_date.split('T')[0],
+                patente: pat
+              });
+            }
+          }
+        });
+
+        // 4. Sumar Ingresos Financieros / Inyecciones de caja
+        (incomesData || []).forEach(inc => {
+          if (!inc.fecha) return;
+          const [yr, mo] = inc.fecha.split('T')[0].split('-').map(Number);
+          if (yr === currentYear) {
+            const m = mo - 1;
+            const val = Number(inc.monto || 0);
+            if (m === currentMonth) {
+              salesTotal += val;
+              const metodo = inc.metodo_pago || 'Efectivo';
+              const isCash = metodo.toLowerCase().includes('efectivo') || metodo.toLowerCase().includes('cash');
+              const isCard = metodo.toLowerCase().includes('tarjeta') || metodo.toLowerCase().includes('pos') || metodo.toLowerCase().includes('debito') || metodo.toLowerCase().includes('credito');
+              const isTransfer = metodo.toLowerCase().includes('transfer');
+              currentMonthSales.push({
+                id: inc.id,
+                type: inc.categoria || 'Inyección de Caja / Ingreso Manual',
+                document_type: inc.numero_documento || 'Comprobante',
+                payment_method: metodo,
+                cash_amount: isCash ? val : 0,
+                card_amount: isCard ? val : 0,
+                transfer_amount: isTransfer ? val : 0,
+                total: val,
+                fecha: inc.fecha.split('T')[0],
+                notes: inc.descripcion,
+                isManualIncome: true
               });
             }
           }
@@ -782,5 +831,56 @@ export const useNexusRPM = () => {
     return { data: updatedExpense };
   };
 
-  return { data, loading, addExpense, deleteExpense, updateExpense, refetchData: () => setTrigger(prev => prev + 1) };
+  const addIncome = async (incomeData) => {
+    if (!companyId || !isUUID(companyId)) return { error: 'Empresa no válida seleccionada' };
+    
+    try {
+      const { data, error } = await supabase
+        .schema('garage')
+        .from('financial_incomes')
+        .insert([{
+          ...incomeData,
+          company_id: companyId
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      setTrigger(prev => prev + 1);
+      return { data };
+    } catch (err) {
+      console.error("[addIncome] Error inserting financial income:", err);
+      return { error: err };
+    }
+  };
+
+  const deleteIncome = async (id) => {
+    if (!id) return { error: 'ID no válido' };
+
+    try {
+      const { error } = await supabase
+        .schema('garage')
+        .from('financial_incomes')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      setTrigger(prev => prev + 1);
+      return { success: true };
+    } catch (err) {
+      console.error("[deleteIncome] Error deleting financial income:", err);
+      return { error: err };
+    }
+  };
+
+  return { 
+    data, 
+    loading, 
+    addExpense, 
+    deleteExpense, 
+    updateExpense, 
+    addIncome, 
+    deleteIncome, 
+    refetchData: () => setTrigger(prev => prev + 1) 
+  };
 };
