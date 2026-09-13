@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import ConfirmModal from './ConfirmModal';
+import { useNexusContext } from '../../context/NexusContext';
 
 const fmt = (num) => Math.round(Number(num) || 0).toLocaleString('es-CL');
 
@@ -164,17 +165,20 @@ export default function PricingModule() {
     fetchParts();
   }, [companyId, refreshTrigger]);
 
-  // Actualizar formulario lateral del catálogo al cambiar de insumo
-  const selectedPart = useMemo(() => {
+  // Sincronizar formulario lateral al cambiar de insumo seleccionado
+  useEffect(() => {
     const part = parts.find(p => p.id === selectedPartId);
     if (part) {
       setEditCost(part.cost === 0 ? '' : part.cost.toString());
-      setEditCostType(part.costType);
-      setEditLaborPercent(part.laborPercent);
-      setEditTaxRate(part.taxRate);
-      setEditPrice(part.price.toString());
+      setEditCostType(part.costType || 'neto');
+      setEditLaborPercent(part.laborPercent !== undefined ? part.laborPercent : 15);
+      setEditTaxRate(part.taxRate !== undefined ? part.taxRate : 19);
+      setEditPrice((part.price || 0).toString());
     }
-    return part;
+  }, [selectedPartId, parts]);
+
+  const selectedPart = useMemo(() => {
+    return parts.find(p => p.id === selectedPartId) || null;
   }, [selectedPartId, parts]);
 
   // ==========================================
